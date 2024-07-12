@@ -41,6 +41,7 @@ from donkeycar.parts.kinematics import Bicycle, InverseBicycle, BicycleUnnormali
 from donkeycar.parts.explode import ExplodeDict
 from donkeycar.parts.transform import Lambda
 from donkeycar.parts.pipe import Pipe
+from donkeycar.parts.f
 from donkeycar.utils import *
 
 logger = logging.getLogger(__name__)
@@ -429,6 +430,25 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         V.add(ThrottleFilter(), 
               inputs=['pilot/throttle'],
               outputs=['pilot/throttle'])
+    
+    #FIRA Engine
+    if cfg.FIRA_ENGINE:
+        from donkeycar.parts.fira_engine import FIRAEngine
+
+        V.add(FIRAEngine(
+            tag_dict=cfg.TAG_DICT,
+            proximity_thresholds=cfg.PROXIMITY_THRESHOLDS,
+            apriltag_hz=cfg.APRILTAG_HZ,
+            zebra_hz=cfg.ZEBRA_HZ,
+            top_crop_ratio=cfg.TOP_CROP_RATIO,
+            stop_duration=cfg.STOP_DURATION,
+            turn_duration=cfg.TURN_DURATION,
+            proceed_duration=cfg.PROCEED_DURATION,
+            max_throttle=cfg.MAX_THROTTLE,
+            max_angle=cfg.MAX_ANGLE,
+            debug_visuals=cfg.DEBUG_VISUALS,
+            debug=cfg.DEBUG
+        ))
 
     #
     # to give the car a boost when starting ai mode in a race.

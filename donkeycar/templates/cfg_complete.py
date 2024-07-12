@@ -764,3 +764,20 @@ FPS_DEBUG_INTERVAL = 10    # the interval in seconds for printing the frequency 
 # PI connection
 PI_USERNAME = "pi"
 PI_HOSTNAME = "donkeypi.local"
+
+#FIRA Engine
+FIRA_ENGINE = True
+APRILTAG_HZ = 2
+ZEBRA_HZ = 2
+STOP_DURATION = 5
+TURN_DURATION = 2
+PROCEED_DURATION = 3
+MAX_THROTTLE = 1.0
+MAX_ANGLE = 30.0
+DEBUG_VISUALS = True
+DEBUG = True
+TOP_CROP_RATIO = 0.5  # Example ratio, crop the top half of the image
+PROXIMITY_THRESHOLDS = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1, 4: 0.1}
+TAG_DICT = {0: 'STOP', 1: 'DEAD_END', 2: 'TURN_LEFT', 3: 'TURN_RIGHT', 4: 'FORWARD'}
+
+
