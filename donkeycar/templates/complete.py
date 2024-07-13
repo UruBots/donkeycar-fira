@@ -41,7 +41,6 @@ from donkeycar.parts.kinematics import Bicycle, InverseBicycle, BicycleUnnormali
 from donkeycar.parts.explode import ExplodeDict
 from donkeycar.parts.transform import Lambda
 from donkeycar.parts.pipe import Pipe
-from donkeycar.parts.f
 from donkeycar.utils import *
 
 logger = logging.getLogger(__name__)
@@ -448,7 +447,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             max_angle=cfg.MAX_ANGLE,
             debug_visuals=cfg.DEBUG_VISUALS,
             debug=cfg.DEBUG
-        ))
+        ),
+        inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        run_condition="run_pilot")
+        
 
     #
     # to give the car a boost when starting ai mode in a race.

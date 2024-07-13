@@ -13,13 +13,9 @@ class AprilTagDetector(object):
         self.proximity_thresholds = proximity_thresholds
 
     def detect_apriltags(self, img_arr):
-        current_time = time.time()
-        if current_time - self.last_detection_time >= 1.0 / self.detection_hz:
-            self.last_detection_time = current_time
-            gray_img = cv2.cvtColor(img_arr, cv2.COLOR_BGR2GRAY)
-            detections = self.detector.detect(gray_img)
-            return detections
-        return []
+        gray_img = cv2.cvtColor(img_arr, cv2.COLOR_BGR2GRAY)
+        detections = self.detector.detect(gray_img)
+        return detections
 
     def is_tag_close(self, tag):
         tag_id = tag.tag_id
@@ -40,16 +36,16 @@ class ZebraCrosswalkDetector(object):
 
     def detect_crosswalk(self, img_arr):
         current_time = time.time()
+        img_height, img_width, _ = img_arr.shape
+        cropped_img = img_arr[int(img_height * self.top_crop_ratio):, :]
         if current_time - self.last_detection_time >= 1.0 / self.detection_hz:
             self.last_detection_time = current_time
-            img_height, img_width, _ = img_arr.shape
-            cropped_img = img_arr[int(img_height * self.top_crop_ratio):, :]
             gray_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray_img, 50, 150, apertureSize=3)
             lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength=100, maxLineGap=10)
             if lines is not None:
-                return lines
-        return []
+                return lines, cropped_img
+        return [], cropped_img
 
 class TurnManager(object):
     def __init__(self, turn_duration, max_throttle, max_angle):
@@ -85,22 +81,23 @@ class FIRAEngine(object):
         self.stop_duration = stop_duration
         self.proceed_start_time = 0
         self.proceed_duration = proceed_duration
+        self.last_apriltag_detection_time = 0
+        self.apriltag_hz = apriltag_hz
+
+        if self.debug:
+            print("FIRA engine running...")
 
     def draw_bounding_box(self, tag, img_arr):
+        img_arr = np.ascontiguousarray(img_arr)
         for corner in tag.corners:
             cv2.circle(img_arr, tuple(corner.astype(int)), 5, (0, 255, 0), -1)
         cv2.polylines(img_arr, [tag.corners.astype(int)], True, (0, 255, 0), 2)
-        if self.debug_visuals:
-            cv2.imshow('AprilTag Detection', img_arr)
-            cv2.waitKey(1)
 
     def draw_crosswalk_lines(self, lines, img_arr):
+        img_arr = np.ascontiguousarray(img_arr)
         for line in lines:
             for x1, y1, x2, y2 in line:
                 cv2.line(img_arr, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        if self.debug_visuals:
-            cv2.imshow('Zebra Crosswalk Detection', img_arr)
-            cv2.waitKey(1)
 
     def detect_apriltags_and_update_state(self, img_arr, current_time, throttle, angle):
         apriltag_detections = self.apriltag_detector.detect_apriltags(img_arr)
@@ -168,20 +165,32 @@ class FIRAEngine(object):
             return throttle, angle, img_arr
 
         if self.state == 'idle':
-            # Detect AprilTags
-            result = self.detect_apriltags_and_update_state(img_arr, current_time, throttle, angle)
-            if result:
-                return result
 
             # Detect Zebra Crosswalks
-            crosswalk_lines = self.zebra_crosswalk_detector.detect_crosswalk(img_arr)
+            crosswalk_lines, cropped_img = self.zebra_crosswalk_detector.detect_crosswalk(img_arr)
             if crosswalk_lines:
                 self.state = 'stop'
                 self.stop_start_time = current_time
                 if self.debug_visuals:
-                    self.draw_crosswalk_lines(crosswalk_lines, img_arr)
+                    self.draw_crosswalk_lines(crosswalk_lines, cropped_img)
                 if self.debug:
                     print("Zebra crosswalk detected")
                 return throttle, angle, img_arr
+
+            # Determine if it's time to detect AprilTags
+            if current_time - self.last_apriltag_detection_time >= 1.0 / self.apriltag_hz:
+                self.last_apriltag_detection_time = current_time
+                if self.debug:
+                    print("Searching for AprilTag...")
+                # Detect AprilTags
+                result = self.detect_apriltags_and_update_state(img_arr, current_time, throttle, angle)
+                if result:
+                    return result
+
+            # Show current detection results if debug_visuals is enabled
+            if self.debug_visuals:
+                cv2.imshow('AprilTag Detection', img_arr)
+                cv2.imshow('Zebra Crosswalk Detection', cropped_img)
+                cv2.waitKey(1)
 
         return throttle, angle, img_arr
