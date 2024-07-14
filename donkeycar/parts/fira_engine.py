@@ -102,7 +102,7 @@ class FIRAEngine(object):
     def detect_apriltags_and_update_state(self, img_arr, current_time, throttle, angle):
         apriltag_detections = self.apriltag_detector.detect_apriltags(img_arr)
         for tag in apriltag_detections:
-            if self.apriltag_detector.is_tag_close(tag):
+            if self.apriltag_detector.is_tag_close(tag): #TODO: Measure distances first and select closest Tag for processing
                 tag_name = self.apriltag_detector.tag_dict.get(tag.tag_id, 'UNKNOWN')
                 if tag_name in ['STOP', 'DEAD_END']:
                     self.state = 'stop'
@@ -111,7 +111,7 @@ class FIRAEngine(object):
                         self.draw_bounding_box(tag, img_arr)
                     if self.debug:
                         print(f"AprilTag detected: {tag_name} - Stop")
-                    return throttle, angle, img_arr
+                    break
                 elif tag_name == 'TURN_LEFT':
                     self.state = 'turn_left'
                     self.turn_manager.start_turn()
@@ -119,7 +119,7 @@ class FIRAEngine(object):
                         self.draw_bounding_box(tag, img_arr)
                     if self.debug:
                         print(f"AprilTag detected: {tag_name} - Turn Left")
-                    return throttle, angle, img_arr
+                    break
                 elif tag_name == 'TURN_RIGHT':
                     self.state = 'turn_right'
                     self.turn_manager.start_turn()
@@ -127,7 +127,7 @@ class FIRAEngine(object):
                         self.draw_bounding_box(tag, img_arr)
                     if self.debug:
                         print(f"AprilTag detected: {tag_name} - Turn Right")
-                    return throttle, angle, img_arr
+                    break
                 elif tag_name == 'FORWARD':
                     self.state = 'proceeding'
                     self.proceed_start_time = current_time
@@ -135,8 +135,9 @@ class FIRAEngine(object):
                         self.draw_bounding_box(tag, img_arr)
                     if self.debug:
                         print(f"AprilTag detected: {tag_name} - Proceeding")
-                    return throttle, angle, img_arr
-        return None
+                    break
+        return throttle, angle, img_arr
+
 
     def run(self, angle, throttle, img_arr):
         current_time = time.time()

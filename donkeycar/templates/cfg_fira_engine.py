@@ -13,7 +13,7 @@ TURN_DURATION = 2
 # Proceed duration (seconds)
 PROCEED_DURATION = 3
 
-# Maximum throttle value
+# Maximum turn throttle value
 MAX_THROTTLE = 1.0
 
 # Maximum turn angle (degrees)
@@ -35,10 +35,5 @@ PROXIMITY_THRESHOLDS = {
 }
 
 # Tag dictionary mapping AprilTag IDs to traffic sign names
-TAG_DICT = {
-    0: 'STOP',
-    1: 'DEAD_END',
-    2: 'TURN_LEFT',
-    3: 'TURN_RIGHT',
-    4: 'FORWARD'
-}
+TAG_DICT = {1: 'STOP', 2: 'DEAD_END', 3: 'TURN_RIGHT', 4: 'TURN_LEFT', 4: 'FORWARD', 5:'STOP'}
+
