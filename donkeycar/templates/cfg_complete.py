@@ -766,18 +766,18 @@ PI_USERNAME = "pi"
 PI_HOSTNAME = "donkeypi.local"
 
 #FIRA Engine
-FIRA_ENGINE = True # Allow FIRA Engine
-APRILTAG_HZ = 2 # Zebra crosswalk detection frequency (Hz)
-ZEBRA_HZ = 2
-STOP_DURATION = 5 # Stop duration (seconds)
-TURN_DURATION = 2 # Turn duration (seconds)
-PROCEED_DURATION = 3 # Proceed (Crossing) duration (seconds)
-MAX_THROTTLE = 1.0 # Maximum turn throttle value
-MAX_ANGLE = 30.0 # Maximum turn angle (degrees)
-DEBUG_VISUALS = True # Show opencv windows with debugging visuals
-DEBUG = True # Print debug information during runtime
-TOP_CROP_RATIO = 0.5  # Crop ratio for the top half of the image in the zebra crosswalk detection
-PROXIMITY_THRESHOLDS = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1, 4: 0.1}
-TAG_DICT = {1: 'STOP', 2: 'DEAD_END', 3: 'TURN_RIGHT', 4: 'TURN_LEFT', 4: 'FORWARD', 5:'STOP'}
-
+FIRA_ENGINE = True
+APRILTAG_HZ = 15
+ZEBRA_HZ = 15
+STOP_DURATION = 5
+TOP_CROP_RATIO = 0.0  # Realsense cropping ratio, 0.0 is no cropping, 1.0 is no picture
+PROXIMITY_THRESHOLDS = {0: 34.0, 1:  34.0, 2:  34.0, 3: 34.0, 4: 34.0}
+TAG_DICT = {-1: 'STOP', 0: 'DEAD_END', 1: 'TURN_LEFT', 2: 'TURN_RIGHT', 4: 'FORWARD'}
+TURN_DURATION = 6 # minus initial wait duration, minus WAIT_DURATION
+TURN_INITIAL_WAIT_DURATION=1.0
+PROCEED_CORRECTION_DURATION=0.0
+PROCEED_STRAIGHT_DURATION=2.2
+WAIT_DURATION=3.0
+DEBUG_VISUALS = False
+DEBUG = True
 
