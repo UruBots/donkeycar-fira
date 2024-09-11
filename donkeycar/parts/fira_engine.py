@@ -46,7 +46,7 @@ class ZebraCrosswalkDetector(object):
             edges = cv2.Canny(gray_img, 175, 225, apertureSize=3)
             
             # Use Hough Line Transform to detect lines
-            lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 20, minLineLength=21, maxLineGap=5)
+            lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 20, minLineLength=15, maxLineGap=4)
             if debug_visuals:
                 cv2.imshow('Crosswalk', edges)
                 cv2.waitKey(1)
@@ -64,20 +64,43 @@ class ZebraCrosswalkDetector(object):
 
 class TurnManager(object):
     def __init__(self, turn_duration, initial_wait_time):
-        self.turn_duration = turn_duration
+        self.turn_duration = turn_duration # DEPRECATED
         self.turn_start_time = 0
         self.initial_wait_time = initial_wait_time  # Wait time before executing the turn
         self.wait_start_time = 0
+        
+        self.left_threshhold = 3# TURN LEFT TIME
+        self.right_threshhold = 2 # TURN RIGHT TIME
+        self.left_angle = -0.75 # TURN LEFT ANGLE
+        self.right_angle = 1 # TURN RIGHT ANGLE
+        self.right_initial = 0.65
+        self.left_initial = 2
+
 
     def start_turn(self):
         self.turn_start_time = time.time()
         self.wait_start_time = time.time()
 
+    def get_left_turn(self):
+        return 1, -1
+    
+    def get_right_turn(self):
+        return -1,1
+
     def is_waiting(self):
         return time.time() - self.wait_start_time < self.initial_wait_time
 
-    def is_turning(self):
-        return time.time() - self.turn_start_time < self.turn_duration
+    def is_turning(self,left=True):
+        if left:
+            return time.time() - self.turn_start_time < self.left_threshhold
+        else:
+            return time.time() - self.turn_start_time < self.right_threshhold
+        
+    def get_turn_angle(self,left=True):
+        if left:
+            return self.left_angle
+        else:
+            return self.right_angle
 
 class ProceedManager(object):
     def __init__(self, correction_duration, straight_duration):
@@ -131,6 +154,13 @@ class FIRAEngine(object):
             return None
         color_image = np.ascontiguousarray(np.asarray(color_frame.get_data()))
         return color_image
+    
+    def adjust_throttle(self, input):
+        reduce = 0.15
+        if input - reduce <= 0:
+            return 0
+        else:
+            return input - reduce
 
     def crop_image(self, img, crop_ratio=None):
         if crop_ratio is None:
@@ -165,11 +195,11 @@ class FIRAEngine(object):
             return correction_angle / img.shape[1], img
         return 0, img
 
-    def detect_apriltags_and_update_state(self, img_arr, current_time, throttle, angle):
+    def detect_apriltags_and_update_state(self, img_arr, current_time, throttle, throttle1, angle):
         apriltag_detections = self.apriltag_detector.detect_apriltags(img_arr)
         for tag in apriltag_detections:
             if self.apriltag_detector.is_tag_close(tag):
-                tag_name = self.apriltag_detector.tag_dict.get(tag.tag_id, 'UNKNOWN')
+                tag_name = self.apriltag_detector.tag_dict.get(tag.tag_id, 'TURN_LEFT')
                 if self.debug:
                     print("Detected tag: " + str(tag.tag_id))
                 self.detected_apriltag = tag_name
@@ -190,22 +220,22 @@ class FIRAEngine(object):
                     if self.debug:
                         print(f"AprilTag detected: {tag_name} - {self.detected_apriltag}")
                     break
-        return angle, throttle, img_arr
+        return angle, self.adjust_throttle(throttle), self.adjust_throttle(throttle1), img_arr
 
-    def run(self, angle, throttle, input_img_arr):
+    def run(self, angle, throttle, throttle1, input_img_arr):
         current_time = time.time()
 
         realsense_img = self.get_realsense_frame()
         cropped_realsense_img = self.crop_image(realsense_img)
-        cropped_input_img = self.crop_image(input_img_arr, 0.65)
+        cropped_input_img = self.crop_image(input_img_arr, 0.2)
         show_img = cropped_input_img.copy()
         if realsense_img is None:
-            return angle, throttle, input_img_arr
+            return angle, self.adjust_throttle(throttle), self.adjust_throttle(throttle1), input_img_arr
 
         if self.state == 'stop':
             if current_time - self.stop_start_time >= self.stop_duration:
                 self.state = 'idle'
-            return 0, 0, input_img_arr
+            return 0, 0, 0, input_img_arr
 
         if self.state == 'wait-for-crosswalk':
             crosswalk_lines = self.zebra_crosswalk_detector.detect_crosswalk(show_img, self.debug_visuals)
@@ -220,11 +250,19 @@ class FIRAEngine(object):
                     self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, cropped_realsense_img)
                 if self.debug:
                     print("Zebra crosswalk detected")
-                return 0, 0, input_img_arr
-            return angle, throttle, input_img_arr
+                return 0, 0, 0, input_img_arr
+            return angle, self.adjust_throttle(throttle), self.adjust_throttle(throttle1), input_img_arr
 
         if self.state == 'wait-at-crosswalk':
-            if current_time - self.stop_start_time >= self.wait_duration:
+            wait = 0
+            if self.detected_apriltag == 'TURN_LEFT':
+                wait = self.turn_manager.left_initial
+            if self.detected_apriltag == 'TURN_RIGHT':
+                wait = self.turn_manager.right_initial
+            else:
+                wait = self.wait_duration
+
+            if current_time - self.stop_start_time >= wait:
                 if self.detected_apriltag == 'TURN_LEFT':
                     self.turn_manager.start_turn()
                     self.state = 'turn_left'
@@ -235,20 +273,30 @@ class FIRAEngine(object):
                     self.proceed_manager.start_proceed()
                     self.state = 'proceeding'
                 self.detected_apriltag = None
-                return 0, 0, input_img_arr
-            return 0, 0, input_img_arr
+                return 0, 0, 0, input_img_arr
+            return 0, 0, 0, input_img_arr
 
         if self.state in ['turn_left', 'turn_right']:
             if self.turn_manager.is_waiting():
-                return 0, 1, input_img_arr
-            if self.turn_manager.is_turning():
+                return 0, 1,1, input_img_arr
+            turning = False
+            if self.state == 'turn_left':
+                turning = self.turn_manager.is_turning(left=True)
+            else:
+                turning = self.turn_manager.is_turning(left=False)
+            if turning:
                 turn_angle = -1 if self.state == 'turn_left' else 1
-                turn_throttle = 1
-                return turn_angle, turn_throttle, input_img_arr
+                if self.state == 'turn_left':
+                    t1, t2 = self.turn_manager.get_left_turn()
+                    return self.turn_manager.get_turn_angle(left=True),t1, t2, input_img_arr
+                else:
+                    t1, t2 = self.turn_manager.get_right_turn()
+                    return self.turn_manager.get_turn_angle(left=False),t1, t2, input_img_arr
+                
             else:
                 self.state = 'idle'
                 self.detected_apriltag = None
-                return angle, throttle, input_img_arr
+                return angle, self.adjust_throttle(throttle), self.adjust_throttle(throttle1), input_img_arr
 
         if self.state == 'proceeding':
             if self.debug_visuals:
@@ -259,13 +307,13 @@ class FIRAEngine(object):
                 if self.debug_visuals:
                     cv2.imshow('Street', show_img)
                     cv2.waitKey(1)
-                return correction_angle, 1, input_img_arr
+                return correction_angle, 1, 1, input_img_arr
             elif self.proceed_manager.is_going_straight():
-                return 0, 1, input_img_arr
+                return 0, 1, 1, input_img_arr
             else:
                 self.state = 'idle'
                 self.detected_apriltag = None
-                return 0, 1, input_img_arr
+                return 0, 1,1, input_img_arr
 
         if self.state == 'idle':
 
@@ -275,9 +323,9 @@ class FIRAEngine(object):
                 if self.debug:
                     print("Searching for AprilTag...")
                 # Detect AprilTags
-                angle, throttle, cropped_realsense_img = self.detect_apriltags_and_update_state(cropped_realsense_img, current_time, throttle, angle)
+                angle, throttle, throttle1, cropped_realsense_img = self.detect_apriltags_and_update_state(cropped_realsense_img, current_time, throttle, throttle1, angle)
                 if angle and throttle:
-                    return angle, throttle, input_img_arr
+                    return angle, self.adjust_throttle(throttle), self.adjust_throttle(throttle1), input_img_arr
 
         # Show current detection results if debug_visuals is enabled
         if self.debug_visuals:
@@ -285,4 +333,4 @@ class FIRAEngine(object):
             cv2.imshow('Street', show_img)
             cv2.waitKey(1)
             
-        return angle, throttle, input_img_arr
+        return angle, self.adjust_throttle(throttle), self.adjust_throttle(throttle1), input_img_arr

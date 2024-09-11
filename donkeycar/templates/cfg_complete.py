@@ -1,6 +1,7 @@
 """
 CAR CONFIG
 
+
 This file is read by your car application's manage.py script to change the car
 performance.
 
@@ -21,13 +22,13 @@ DATA_PATH = os.path.join(CAR_PATH, 'data')
 MODELS_PATH = os.path.join(CAR_PATH, 'models')
 
 #VEHICLE
-DRIVE_LOOP_HZ = 20      # the vehicle loop will pause if faster than this speed.
+DRIVE_LOOP_HZ = 30      # the vehicle loop will pause if faster than this speed.
 MAX_LOOPS = None        # the vehicle loop can abort after this many iterations, when given a positive integer.
 
 #CAMERA
-CAMERA_TYPE = "PICAM"   # (PICAM|WEBCAM|CVCAM|CSIC|V4L|D435|MOCK|IMAGE_LIST)
-IMAGE_W = 160
-IMAGE_H = 120
+CAMERA_TYPE = "D435"   # (PICAM|WEBCAM|CVCAM|CSIC|V4L|D435|MOCK|IMAGE_LIST)
+IMAGE_W = 1920
+IMAGE_H = 1080
 IMAGE_DEPTH = 3         # default RGB=3, make 1 for mono
 CAMERA_FRAMERATE = DRIVE_LOOP_HZ
 CAMERA_VFLIP = False
@@ -71,8 +72,8 @@ SSD1306_RESOLUTION = 1 # 1 = 128x32; 2 = 128x64
 # (deprecated) "PIGPIO_PWM" uses Raspberrys internal PWM
 # (deprecated) "I2C_SERVO" uses PCA9685 servo controller to control a steering servo and an ESC, as in a standard RC car
 #
+#DRIVE_TRAIN_TYPE = "PWM_STEERING_THROTTLE"
 DRIVE_TRAIN_TYPE = "PWM_STEERING_THROTTLE"
-
 #
 # PWM_STEERING_THROTTLE
 #
@@ -81,19 +82,25 @@ DRIVE_TRAIN_TYPE = "PWM_STEERING_THROTTLE"
 # Base PWM Frequence is presumed to be 60hz; use PWM_xxxx_SCALE to adjust pulse with for non-standard PWM frequencies
 #
 PWM_STEERING_THROTTLE = {
-    "PWM_STEERING_PIN": "PCA9685.1:40.1",   # PWM output pin for steering servo
+    "PWM_STEERING_PIN": "PCA9685.1:40.2",   # PWM output pin for steering servo
     "PWM_STEERING_SCALE": 1.0,              # used to compensate for PWM frequency differents from 60hz; NOT for adjusting steering range
     "PWM_STEERING_INVERTED": False,         # True if hardware requires an inverted PWM pulse
-    "PWM_THROTTLE_PIN": "PCA9685.1:40.0",   # PWM output pin for ESC
+    "PWM_THROTTLE_PIN": "PCA9685.1:40.0",   # PWM output pin for ESC for motor 1
+    "PWM_THROTTLE_PIN_1": "PCA9685.1:40.1", # PWM output pin for ESC for motor 2
     "PWM_THROTTLE_SCALE": 1.0,              # used to compensate for PWM frequence differences from 60hz; NOT for increasing/limiting speed
     "PWM_THROTTLE_INVERTED": False,         # True if hardware requires an inverted PWM pulse
-    "STEERING_LEFT_PWM": 460,               #pwm value for full left steering
-    "STEERING_RIGHT_PWM": 290,              #pwm value for full right steering
-    "THROTTLE_FORWARD_PWM": 500,            #pwm value for max forward throttle
-    "THROTTLE_STOPPED_PWM": 370,            #pwm value for no movement
-    "THROTTLE_REVERSE_PWM": 220,            #pwm value for max reverse throttle
+    "PWM_DIR_MOTOR1_PIN_1":"PCA9685.1:40.14", # First pin that controls direction of Throttle motor 1
+    "PWM_DIR_MOTOR1_PIN_2":"PCA9685.1:40.15", # Second pin that controls direction of Throttle motor 1
+    "PWM_DIR_MOTOR2_PIN_1":"PCA9685.1:40.12", # First pin that controls direction of Throttle motor 2
+    "PWM_DIR_MOTOR2_PIN_2":"PCA9685.1:40.13", # Second pin that controls direction of Throttle motor 2
+    "PWM_DIR_DIGITAL_ONE":4095, # If Throttle is positive, this value will be sent as a digital one
+    "PWM_DIR_DIGITAL_ZERO":0, # If Throttle is negative, this value will be sent as a digital one
+    "STEERING_LEFT_PWM": 320,               #pwm value for full left steering
+    "STEERING_RIGHT_PWM":500,              #pwm value for full right steering
+    "THROTTLE_FORWARD_PWM": 2000,            #pwm value for max forward throttle
+    "THROTTLE_STOPPED_PWM": 1,            #pwm value for no movement
+    "THROTTLE_REVERSE_PWM": 650,            #pwm value for max reverse throttle
 }
-
 #
 # I2C_SERVO (deprecated in favor of PWM_STEERING_THROTTLE)
 #
@@ -101,7 +108,7 @@ STEERING_CHANNEL = 1            #(deprecated) channel on the 9685 pwm board 0-15
 STEERING_LEFT_PWM = 460         #pwm value for full left steering
 STEERING_RIGHT_PWM = 290        #pwm value for full right steering
 THROTTLE_CHANNEL = 0            #(deprecated) channel on the 9685 pwm board 0-15
-THROTTLE_FORWARD_PWM = 500      #pwm value for max forward throttle
+THROTTLE_FORWARD_PWM = 0      #pwm value for max forward throttle
 THROTTLE_STOPPED_PWM = 370      #pwm value for no movement
 THROTTLE_REVERSE_PWM = 220      #pwm value for max reverse throttle
 
@@ -291,10 +298,11 @@ DC_STEER_THROTTLE = {
 #   although it is discouraged to mix RPI_GPIO and PIGPIO.
 #
 DC_TWO_WHEEL = {
-    "LEFT_FWD_DUTY_PIN": "RPI_GPIO.BOARD.18",  # pwm pin produces duty cycle for left wheel forward
-    "LEFT_BWD_DUTY_PIN": "RPI_GPIO.BOARD.16",  # pwm pin produces duty cycle for left wheel reverse
-    "RIGHT_FWD_DUTY_PIN": "RPI_GPIO.BOARD.15", # pwm pin produces duty cycle for right wheel forward
-    "RIGHT_BWD_DUTY_PIN": "RPI_GPIO.BOARD.13", # pwm pin produces duty cycle for right wheel reverse
+    "LEFT_FWD_DUTY_PIN": "PCA9685.1:40.0",  # pwm pin produces duty cycle for left wheel forward
+    "LEFT_BWD_DUTY_PIN": "PCA9685.1:40.0",  # pwm pin produces duty cycle for left wheel reverse
+    "RIGHT_FWD_DUTY_PIN": "PCA9685.1:40.1",  # pwm pin produces duty cycle for right wheel forward
+    "RIGHT_BWD_DUTY_PIN": "PCA9685.1:40.1",  # pwm pin produces duty cycle for right wheel reverse
+    "PWM_STEERING_PIN": "PCA9685.1:40.4",   # PWM output pin for steering servo
 }
 
 #
@@ -331,13 +339,14 @@ DC_TWO_WHEEL = {
 #   although it is discouraged to mix RPI_GPIO and PIGPIO.
 #
 DC_TWO_WHEEL_L298N = {
-    "LEFT_FWD_PIN": "RPI_GPIO.BOARD.16",        # TTL output pin enables left wheel forward
-    "LEFT_BWD_PIN": "RPI_GPIO.BOARD.18",        # TTL output pin enables left wheel reverse
-    "LEFT_EN_DUTY_PIN": "RPI_GPIO.BOARD.22",    # PWM pin generates duty cycle for left motor speed
+    "LEFT_FWD_PIN": "PCA9685.1:40.0",        # TTL output pin enables left wheel forward
+    "LEFT_BWD_PIN": "PCA9685.1:40.1",        # TTL output pin enables left wheel reverse
+    "LEFT_EN_DUTY_PIN": "PCA9685.1:40.1",    # PWM pin generates duty cycle for left motor speed
 
-    "RIGHT_FWD_PIN": "RPI_GPIO.BOARD.15",       # TTL output pin enables right wheel forward
-    "RIGHT_BWD_PIN": "RPI_GPIO.BOARD.13",       # TTL output pin enables right wheel reverse
-    "RIGHT_EN_DUTY_PIN": "RPI_GPIO.BOARD.11",   # PWM pin generates duty cycle for right wheel speed
+    "RIGHT_FWD_PIN": "PCA9685.1:40.1",       # TTL output pin enables right wheel forward
+    "RIGHT_BWD_PIN": "PCA9685.1:40.0",       # TTL output pin enables right wheel reverse
+    "RIGHT_EN_DUTY_PIN": "PCA9685.1:40.1",   # PWM pin generates duty cycle for right wheel speed
+    "PWM_STEERING_PIN": "PCA9685.1:40.4",   # PWM output pin for steering servo
 }
 
 #ODOMETRY
@@ -564,7 +573,7 @@ USE_JOYSTICK_AS_DEFAULT = False      #when starting the manage.py, when True, wi
 JOYSTICK_MAX_THROTTLE = 0.5         #this scalar is multiplied with the -1 to 1 throttle value to limit the maximum throttle. This can help if you drop the controller or just don't need the full speed available.
 JOYSTICK_STEERING_SCALE = 1.0       #some people want a steering that is less sensitve. This scalar is multiplied with the steering -1 to 1. It can be negative to reverse dir.
 AUTO_RECORD_ON_THROTTLE = True      #if true, we will record whenever throttle is not zero. if false, you must manually toggle recording with some other trigger. Usually circle button on joystick.
-CONTROLLER_TYPE = 'xbox'            #(ps3|ps4|xbox|pigpio_rc|nimbus|wiiu|F710|rc3|MM1|custom) custom will run the my_joystick.py controller written by the `donkey createjs` command
+CONTROLLER_TYPE = 'ps4'            #(ps3|ps4|xbox|pigpio_rc|nimbus|wiiu|F710|rc3|MM1|custom) custom will run the my_joystick.py controller written by the `donkey createjs` command
 USE_NETWORKED_JS = False            #should we listen for remote joystick control over the network?
 NETWORK_JS_SERVER_IP = None         #when listening for network joystick control, which ip is serving this information
 JOYSTICK_DEADZONE = 0.01            # when non zero, this is the smallest throttle before recording triggered.
@@ -578,7 +587,7 @@ JOYSTICK_DEVICE_FILE = "/dev/input/js0" # this is the unix file use to access th
 MODEL_CATEGORICAL_MAX_THROTTLE_RANGE = 0.8
 
 #RNN or 3D
-SEQUENCE_LENGTH = 3             #some models use a number of images over time. This controls how many.
+SEQUENCE_LENGTH = 2            #some models use a number of images over time. This controls how many.
 
 #IMU
 HAVE_IMU = False                #when true, this add a Mpu6050 part and records the data. Can be used with a
@@ -719,7 +728,7 @@ SIM_RECORD_VELOCITY = False
 SIM_RECORD_LIDAR = False
 
 #publish camera over network
-#This is used to create a tcp service to publish the camera feed
+  #This is used to create a tcp service to publish the camera feed
 PUB_CAMERA_IMAGES = False
 
 #When racing, to give the ai a boost, configure these values.
@@ -746,7 +755,7 @@ RESET_ORIGIN_BTN = "triangle"       # joystick button to press to move car back 
 
 # Intel Realsense D435 and D435i depth sensing camera
 REALSENSE_D435_RGB = True       # True to capture RGB image
-REALSENSE_D435_DEPTH = True     # True to capture depth as image array
+REALSENSE_D435_DEPTH = False     # True to capture depth as image array
 REALSENSE_D435_IMU = False      # True to capture IMU data (D435i only)
 REALSENSE_D435_ID = None        # serial number of camera or None if you only have one camera (it will autodetect)
 
@@ -758,7 +767,7 @@ STOP_SIGN_MAX_REVERSE_COUNT = 10    # How many times should the car reverse when
 STOP_SIGN_REVERSE_THROTTLE = -0.5     # Throttle during reversing when detected a stop sign
 
 # FPS counter
-SHOW_FPS = False
+SHOW_FPS = True
 FPS_DEBUG_INTERVAL = 10    # the interval in seconds for printing the frequency info into the shell
 
 # PI connection
@@ -766,18 +775,19 @@ PI_USERNAME = "pi"
 PI_HOSTNAME = "donkeypi.local"
 
 #FIRA Engine
-FIRA_ENGINE = True
+FIRA_ENGINE = False
 APRILTAG_HZ = 15
 ZEBRA_HZ = 15
-STOP_DURATION = 5
+STOP_DURATION = 3
 TOP_CROP_RATIO = 0.0  # Realsense cropping ratio, 0.0 is no cropping, 1.0 is no picture
-PROXIMITY_THRESHOLDS = {0: 34.0, 1:  34.0, 2:  34.0, 3: 34.0, 4: 34.0}
-TAG_DICT = {-1: 'STOP', 0: 'DEAD_END', 1: 'TURN_LEFT', 2: 'TURN_RIGHT', 4: 'FORWARD'}
-TURN_DURATION = 6 # minus initial wait duration, minus WAIT_DURATION
-TURN_INITIAL_WAIT_DURATION=1.0
+PROXIMITY_THRESHOLDS = {0: 28.0, 1:  28.0, 2:  28.0, 3: 28.0, 4: 28.0}
+TAG_DICT = {-1: 'STOP', 0: 'DEAD_END', 3: 'TURN_LEFT', 2: 'TURN_RIGHT', 4: 'FORWARD'}
+TURN_DURATION = 3 # minus initial wait duration, minus WAIT_DURATION
+TURN_INITIAL_WAIT_DURATION=0.45
 PROCEED_CORRECTION_DURATION=0.0
-PROCEED_STRAIGHT_DURATION=2.2
+PROCEED_STRAIGHT_DURATION=1.75
 WAIT_DURATION=3.0
 DEBUG_VISUALS = False
 DEBUG = True
+
 

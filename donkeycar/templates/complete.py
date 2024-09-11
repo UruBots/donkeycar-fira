@@ -43,6 +43,7 @@ from donkeycar.parts.transform import Lambda
 from donkeycar.parts.pipe import Pipe
 from donkeycar.utils import *
 
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -429,8 +430,24 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         V.add(ThrottleFilter(), 
               inputs=['pilot/throttle'],
               outputs=['pilot/throttle'])
+
+    class ThrottleSplitter:
+        def run(self,throttle):
+            return throttle, throttle
     
-    #FIRA Engine
+    # if False:
+    #     import MyEngine from donkeycar.parts.new-engine
+    #     V.add(MyEngine(),
+    #         inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+    #         outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+    #         run_condition="run_pilot")
+
+    V.add(ThrottleSplitter(), 
+              inputs=['pilot/throttle'],
+              outputs=['pilot/throttle','pilot/throttle1'])
+
+
+      #FIRA Engine
     if cfg.FIRA_ENGINE:
         from donkeycar.parts.fira_engine import FIRAEngine
 
@@ -449,11 +466,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             debug_visuals=cfg.DEBUG_VISUALS,
             debug=cfg.DEBUG
         ),
-        inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
-        outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        inputs=['pilot/angle', 'pilot/throttle','pilot/throttle1',  'cam/image_array'],
+        outputs=['pilot/angle', 'pilot/throttle', 'pilot/throttle1', 'cam/image_array'],
         run_condition="run_pilot")
-        
-
     #
     # to give the car a boost when starting ai mode in a race.
     # This will also override the stop sign detector so that
@@ -461,7 +476,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     # will stop when it comes to the stop sign the next time.
     #
     # NOTE: when launch throttle is in effect, pilot speed is set to None
-    #
+    # TODO needs changes for new topic throttle1
     aiLauncher = AiLaunch(cfg.AI_LAUNCH_DURATION, cfg.AI_LAUNCH_THROTTLE, cfg.AI_LAUNCH_KEEP_ENABLED)
     V.add(aiLauncher,
           inputs=['user/mode', 'pilot/throttle'],
@@ -473,8 +488,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     #
     V.add(DriveMode(cfg.AI_THROTTLE_MULT),
           inputs=['user/mode', 'user/angle', 'user/throttle',
-                  'pilot/angle', 'pilot/throttle'],
-          outputs=['steering', 'throttle'])
+                  'pilot/angle', 'pilot/throttle', 'pilot/throttle1'],
+          outputs=['steering', 'throttle','throttle1'])
 
 
     if (cfg.CONTROLLER_TYPE != "pigpio_rc") and (cfg.CONTROLLER_TYPE != "MM1"):
@@ -663,7 +678,7 @@ class DriveMode:
 
     def run(self, mode,
             user_steering, user_throttle,
-            pilot_steering, pilot_throttle):
+            pilot_steering, pilot_throttle, pilot_throttle1):
         """
         Main final steering and throttle values based on user mode
         :param mode: 'user'|'local_angle'|'local_pilot'
@@ -675,11 +690,12 @@ class DriveMode:
                  scaled by ai_throttle_mult in autopilot mode
         """
         if mode == 'user':
-            return user_steering, user_throttle
+            return user_steering, user_throttle, user_throttle
         elif mode == 'local_angle':
-            return pilot_steering if pilot_steering else 0.0, user_throttle
+            return pilot_steering if pilot_steering else 0.0, user_throttle, user_throttle
         return (pilot_steering if pilot_steering else 0.0,
-               pilot_throttle * self.ai_throttle_mult if pilot_throttle else 0.0)
+               pilot_throttle * self.ai_throttle_mult if pilot_throttle else 0.0,
+               pilot_throttle1 * self.ai_throttle_mult if pilot_throttle1 else 0.0)
 
 
 class UserPilotCondition:
@@ -989,8 +1005,54 @@ def add_drivetrain(V, cfg):
                                                 max_pulse=dt['THROTTLE_FORWARD_PWM'],
                                                 zero_pulse=dt['THROTTLE_STOPPED_PWM'],
                                                 min_pulse=dt['THROTTLE_REVERSE_PWM'])
+            throttle_controller_1 = PulseController(
+                pwm_pin=pins.pwm_pin_by_id(dt["PWM_THROTTLE_PIN_1"]),
+                pwm_scale=dt["PWM_THROTTLE_SCALE"],
+                pwm_inverted=dt['PWM_THROTTLE_INVERTED'])
+            throttle_1 = PWMThrottle(controller=throttle_controller_1,
+                                                max_pulse=dt['THROTTLE_FORWARD_PWM'],
+                                                zero_pulse=dt['THROTTLE_STOPPED_PWM'],
+                                                min_pulse=dt['THROTTLE_REVERSE_PWM'])
+
             V.add(steering, inputs=['steering'], threaded=True)
             V.add(throttle, inputs=['throttle'], threaded=True)
+            V.add(throttle_1, inputs=['throttle1'], threaded=True)
+            
+            from donkeycar.parts.actuator import PWMDirectionControl
+
+            motor1_dir_pin1_controller = PulseController(
+                pwm_pin=pins.pwm_pin_by_id(dt["PWM_DIR_MOTOR1_PIN_1"],),
+                pwm_scale=1.0, 
+                pwm_inverted=False)
+
+            motor1_dir_pin2_controller = PulseController(
+                pwm_pin=pins.pwm_pin_by_id(dt["PWM_DIR_MOTOR1_PIN_2"],),  
+                pwm_scale=1.0,
+                pwm_inverted=False)
+            
+            motor1_dir = PWMDirectionControl(controller_1=motor1_dir_pin1_controller,
+                                                controller_2=motor1_dir_pin2_controller,
+                                                max_pulse=dt["PWM_DIR_DIGITAL_ONE"],
+                                                zero_pulse=dt["PWM_DIR_DIGITAL_ZERO"],
+                                                min_pulse=dt["PWM_DIR_DIGITAL_ZERO"])
+
+            motor2_dir_pin1_controller = PulseController(
+                pwm_pin=pins.pwm_pin_by_id(dt["PWM_DIR_MOTOR2_PIN_1"]),
+                pwm_inverted=False)
+
+            motor2_dir_pin2_controller = PulseController(
+                pwm_pin=pins.pwm_pin_by_id(dt["PWM_DIR_MOTOR2_PIN_2"]),
+                pwm_inverted=False)
+            
+            motor2_dir = PWMDirectionControl(controller_1=motor2_dir_pin1_controller,
+                                                controller_2=motor2_dir_pin2_controller,
+                                                max_pulse=dt["PWM_DIR_DIGITAL_ONE"],
+                                                zero_pulse=dt["PWM_DIR_DIGITAL_ZERO"],
+                                                min_pulse=dt["PWM_DIR_DIGITAL_ZERO"])
+
+            V.add(motor1_dir, inputs=['throttle'], threaded=True)
+            V.add(motor2_dir, inputs=['throttle1'], threaded=True)
+
 
         elif cfg.DRIVE_TRAIN_TYPE == "I2C_SERVO":
             #

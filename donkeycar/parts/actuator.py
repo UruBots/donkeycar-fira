@@ -382,7 +382,70 @@ class PWMThrottle:
         # stop vehicle
         self.run(0)
         self.running = False
+# Added
+class PWMDirectionControl:
+    """
+    Wrapper over two PWM pulse controller to convert -1 to 1 throttle
+    values to a digital PWM pulse, 1 on controller 1 and and 0 on controller 2
+    """
+    MIN_THROTTLE = -1
+    MAX_THROTTLE = 1
 
+    def __init__(self, controller_1, controller_2, max_pulse, min_pulse, zero_pulse):
+
+        if controller_1 is None or controller_2 is None:
+            raise ValueError("PWMThrottle requires a set_pulse controller to be passed")
+
+        set_pulse = getattr(controller_1, "set_pulse", None)
+        set_pulse = getattr(controller_2, "set_pulse", None)
+        if set_pulse is None or not callable(set_pulse):
+            raise ValueError("controller must have a set_pulse method")
+
+        self.controller_1 = controller_1
+        self.controller_2 = controller_2
+        self.max_pulse = max_pulse
+        self.min_pulse = min_pulse
+        self.zero_pulse = zero_pulse
+        self.pulse_1 = zero_pulse
+        self.pulse_2 = zero_pulse
+
+        # send zero pulse to calibrate ESC
+        logger.info("Init ESC")
+        self.controller_1.set_pulse(self.max_pulse)
+        self.controller_2.set_pulse(self.max_pulse)
+        time.sleep(0.01)
+        self.controller_1.set_pulse(self.min_pulse)
+        self.controller_2.set_pulse(self.min_pulse)
+        time.sleep(0.01)
+        self.controller_1.set_pulse(self.zero_pulse)
+        self.controller_2.set_pulse(self.zero_pulse)
+        time.sleep(1)
+        self.running = True
+        logger.info('PWM Digital created')
+
+    def update(self):
+        while self.running:
+            self.controller_1.set_pulse(self.pulse_1)
+            self.controller_2.set_pulse(self.pulse_2)
+
+    def run_threaded(self, throttle):
+        if throttle > 0:
+            self.pulse_1 = self.max_pulse
+            self.pulse_2 = self.zero_pulse
+        elif throttle < 0:
+            self.pulse_1 = self.zero_pulse
+            self.pulse_2 = self.max_pulse
+        
+
+    def run(self, throttle):
+        self.run_threaded(throttle)
+        self.controller_1.set_pulse(self.pulse_1)
+        self.controller_2.set_pulse(self.pulse_2)
+
+    def shutdown(self):
+        # stop vehicle
+        self.run(0)
+        self.running = False
 
 #
 # This seems redundant.  If it's really emulating and PCA9685, then
