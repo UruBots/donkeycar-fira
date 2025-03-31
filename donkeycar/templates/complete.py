@@ -455,8 +455,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         
     #FIRA YOLO Engine
     if cfg.FIRA_ENGINE_YOLO:
-        from donkeycar.parts.fira_engine_yolo import FIRAEngineYolo
-
+        from donkeycar.parts.fira_engine_yolo.fira_engine_yolo \
+            import FIRAEngineYolo
         V.add(FIRAEngineYolo(
             yolo_classes=cfg.FIRA_YOLO_CLASSES,
             apriltag_hz=cfg.APRILTAG_HZ,
