@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import cv2
 from ultralytics import YOLO
@@ -8,6 +9,8 @@ import math
 KNOWN_DISTANCE = 10  # cm (Distancia de referencia)
 KNOWN_WIDTH = 5  # cm (Ancho real del objeto de referencia)
 FOCAL_LENGTH = 300  # Ajustar según calibración
+
+model_path = os.path.abspath("./model/yolov8-trained.pt")
 
 class YoloDetect(object):
     def __init__(self, model_path, classes_dict):
@@ -98,7 +101,7 @@ class ProceedManager(object):
 
 class FIRAEngineYolo(object):
     def __init__(self, yolo_classes, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
-        self.yolo_detector = YoloDetect("./model/yolov8-trained.pt", yolo_classes)
+        self.yolo_detector = YoloDetect(model_path, yolo_classes)
         self.yolo_classes = yolo_classes
         self.zebra_crosswalk_detector = ZebraCrosswalkDetector(zebra_hz)
         self.turn_manager = TurnManager(turn_duration,turn_initial_wait_duration)
