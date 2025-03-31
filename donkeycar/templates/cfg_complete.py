@@ -781,3 +781,9 @@ WAIT_DURATION=3.0
 DEBUG_VISUALS = False
 DEBUG = True
 
+#FIRA Engine YOLO
+FIRA_ENGINE_YOLO = True
+FIRA_YOLO_HZ = 15
+FIRA_YOLO_CLASSES = ['End', 'Forward', 'Left', 'No_entry', 'Right', 'Stop']
+FIRA_DEBUG_VISUALS = False
+FIRA_DEBUG = True
