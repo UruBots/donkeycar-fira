@@ -220,16 +220,19 @@ class FIRAEngineYolo(object):
             raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
 
         results = self.yolo_detector.run(img_arr)
+        model = self.yolo_detector.model
         for result in results:
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
                 cls = int(box.cls[0])
-                print["###### YOLO class detected ", cls]
+                class_name = model.names[cls]  # Get class name from YOLO model
+
+                print["###### YOLO class detected ", class_name]
                 object_width_px = x2 - x1  # Ancho del objeto en píxeles
 
                 if conf > 0.5:
-                    class_name = f"{self.yolo_classes[cls]}: {conf:.2f}"
+                    #class_name = f"{self.yolo_classes[cls]}: {conf:.2f}"
                     self.detected_object = class_name
                     color = (0, 255, 0)  # Color del cuadro (verde)
 
