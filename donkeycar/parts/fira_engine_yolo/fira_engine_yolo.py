@@ -18,10 +18,11 @@ class YoloDetect(object):
         self.classes = classes_dict
         
     def show_fps(self, prev_frame_time, img_arr):
+        img = np.copy(img_arr)
         new_frame_time = time.time()
         fps = 1 / (new_frame_time - prev_frame_time)
         prev_frame_time = new_frame_time
-        cv2.putText(img_arr,f"FPS: {int(fps)}",(10, 30),cv2.FONT_HERSHEY_SIMPLEX,1,(0, 255, 0),2,cv2.LINE_AA,)
+        cv2.putText(img,f"FPS: {int(fps)}",(10, 30),cv2.FONT_HERSHEY_SIMPLEX,1,(0, 255, 0),2,cv2.LINE_AA,)
     
     def estimate_distance(self, known_width, focal_length, object_width_px):
         """ Calcula la distancia estimada de un objeto en cm. """
@@ -43,6 +44,7 @@ class ZebraCrosswalkDetector(object):
         self.last_detection_time = 0
 
     def detect_crosswalk(self, img_arr, debug_visuals):
+        # img = np.copy(img_arr)
         current_time = time.time()
         if current_time - self.last_detection_time >= 1.0 / self.detection_hz:
             self.last_detection_time = current_time
@@ -51,9 +53,9 @@ class ZebraCrosswalkDetector(object):
             
             # Use Hough Line Transform to detect lines
             lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 20, minLineLength=21, maxLineGap=5)
-            if debug_visuals:
-                cv2.imshow('Crosswalk', edges)
-                cv2.waitKey(1)
+            # if debug_visuals:
+                # cv2.imshow('Crosswalk', edges)
+                # cv2.waitKey(1)
             if lines is not None:
                 # Filter lines to detect zebra crosswalk pattern
                 vertical_lines = [line for line in lines if abs(line[0][0] - line[0][2]) < 10]
@@ -241,7 +243,7 @@ class FIRAEngineYolo(object):
         return angle, throttle, img_arr
 
     def run(self, angle, throttle, input_img_arr):
-        current_time = time.time()
+        current_time = time.time()        
         # cropped_input_img = self.crop_image(input_img_arr, 0.65)
 
         if self.state == 'stop':
