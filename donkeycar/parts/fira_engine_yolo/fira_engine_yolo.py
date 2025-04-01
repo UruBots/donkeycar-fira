@@ -201,6 +201,24 @@ class FIRAEngineYolo(object):
     
     def detect_yolo_signals(self, img_arr, current_time, throttle, angle):
         img = np.copy(img_arr)
+
+        # Ensure img is a valid OpenCV image (uint8, 3 channels)
+        if img is None or not isinstance(img, np.ndarray):
+            raise ValueError("❌ Error: img_arr is not a valid numpy array")
+
+        if img.dtype != np.uint8:
+            img = img.astype(np.uint8)
+
+        if len(img.shape) == 2:  # Convert grayscale to BGR
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+        if img.shape[-1] == 4:  # Convert RGBA to BGR
+            img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+
+        # Ensure it's a valid image shape
+        if len(img.shape) != 3 or img.shape[-1] != 3:
+            raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
+
         results = self.yolo_detector.run(img_arr)
         for result in results:
             for box in result.boxes:
