@@ -225,6 +225,7 @@ class FIRAEngineYolo(object):
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
                 cls = int(box.cls[0])
+                print["###### YOLO class detected ", cls]
                 object_width_px = x2 - x1  # Ancho del objeto en píxeles
 
                 if conf > 0.5:
