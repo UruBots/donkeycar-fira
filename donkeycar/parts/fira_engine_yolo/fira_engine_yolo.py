@@ -234,8 +234,8 @@ class FIRAEngineYolo(object):
                                 print(f"YOLO class detected: {class_name} - Left || Right || Forward")
                             break
         # Mostrar la imagen con anotaciones
-        if(self.debug_visuals):
-            annotated_frame = results[0].plot()
+        # if(self.debug_visuals):
+            # annotated_frame = results[0].plot()
             # cv2.imshow("YOLOv8 Inference", annotated_frame)
         
         return angle, throttle, img_arr
