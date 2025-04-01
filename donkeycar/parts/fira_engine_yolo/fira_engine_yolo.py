@@ -236,7 +236,7 @@ class FIRAEngineYolo(object):
                         cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                         #cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
 
-                    distance = self.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
+                    distance = self.yolo_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
 
                     if self.debug_visuals:
                         self.yolo_detector.show_distance(distance, x1, y1, img)
