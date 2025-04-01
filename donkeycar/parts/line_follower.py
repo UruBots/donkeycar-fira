@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from simple_pid import PID
 import logging
 
 logger = logging.getLogger(__name__)

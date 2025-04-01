@@ -19,6 +19,8 @@ class YoloDetect(object):
         
     def show_fps(self, prev_frame_time, img_arr):
         img = np.copy(img_arr)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
         new_frame_time = time.time()
         fps = 1 / (new_frame_time - prev_frame_time)
         prev_frame_time = new_frame_time
