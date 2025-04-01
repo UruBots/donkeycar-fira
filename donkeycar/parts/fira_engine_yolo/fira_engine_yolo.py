@@ -226,8 +226,15 @@ class FIRAEngineYolo(object):
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
                 cls = int(box.cls[0])
-                class_name = model.names[cls]  # Get class name from YOLO model
+                class_name = "Unknown"  # Get class name from YOLO model
 
+                if isinstance(model.names, dict):  # If it's a dictionary
+                    class_name = model.names.get(cls, "Unknown")
+                elif isinstance(model.names, list):  # If it's a list
+                    class_name = model.names[cls] if cls < len(model.names) else "Unknown"
+                else:
+                    class_name = "Unknown"
+                    
                 if(self.debug):
                     print(f"Detected: {class_name} (Class ID: {cls}) with Confidence: {conf:.2f}")
 
@@ -356,3 +363,4 @@ class FIRAEngineYolo(object):
                     return angle, throttle, input_img_arr
             
         return angle, throttle, input_img_arr
+    
