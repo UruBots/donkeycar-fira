@@ -228,7 +228,9 @@ class FIRAEngineYolo(object):
                 cls = int(box.cls[0])
                 class_name = model.names[cls]  # Get class name from YOLO model
 
-                print["###### YOLO class detected ", class_name]
+                if(self.debug):
+                    print(f"Detected: {class_name} (Class ID: {cls}) with Confidence: {conf:.2f}")
+
                 object_width_px = x2 - x1  # Ancho del objeto en píxeles
 
                 if conf > 0.5:
