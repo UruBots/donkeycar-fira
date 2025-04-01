@@ -130,6 +130,7 @@ class FIRAEngineYolo(object):
         return cropped_img
 
     def detect_lane_and_correction(self, img):
+        img = np.copy(img)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 200, 300, apertureSize=3)
         lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 50, minLineLength=50, maxLineGap=10)
@@ -156,6 +157,7 @@ class FIRAEngineYolo(object):
         return 0, img
 
     def detect_dashed_center_line(self, img):
+        img = np.copy(img)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 150, 250, apertureSize=3)
 
@@ -194,6 +196,7 @@ class FIRAEngineYolo(object):
         return correction_angle, img
     
     def detect_yolo_signals(self, img_arr, current_time, throttle, angle):
+        img = np.copy(img_arr)
         results = self.yolo_detector.run(img_arr)
         for result in results:
             for box in result.boxes:
@@ -208,13 +211,13 @@ class FIRAEngineYolo(object):
 
                     if(self.debug_visuals):
                         color = (0, 255, 0)  # Color del cuadro (verde)
-                        cv2.putText(img_arr, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-                    cv2.rectangle(img_arr, (x1, y1), (x2, y2), color, 2)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                     distance = self.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
 
                     if self.debug_visuals:
-                        self.yolo_detector.show_distance(distance, x1, y1, img_arr)
+                        self.yolo_detector.show_distance(distance, x1, y1, img)
 
                     if distance <= 10:
                         if class_name in ['Stop', 'No_entry', 'End']:
@@ -233,7 +236,7 @@ class FIRAEngineYolo(object):
         # Mostrar la imagen con anotaciones
         if(self.debug_visuals):
             annotated_frame = results[0].plot()
-            cv2.imshow("YOLOv8 Inference", annotated_frame)
+            # cv2.imshow("YOLOv8 Inference", annotated_frame)
         
         return angle, throttle, img_arr
 
@@ -294,9 +297,9 @@ class FIRAEngineYolo(object):
                 # correction_angle, show_img = self.detect_lane_and_correction(input_img_arr)
                 # testear
                 correction_angle, show_img = self.detect_dashed_center_line(input_img_arr)
-                if self.debug_visuals:
-                    cv2.imshow('Street', show_img)
-                    cv2.waitKey(1)
+                # if self.debug_visuals:
+                #     # cv2.imshow('Street', show_img)
+                #     # cv2.waitKey(1)
                 if self.debug:
                     print("proceeding - correction_angle", correction_angle)
                 return correction_angle, 1, input_img_arr

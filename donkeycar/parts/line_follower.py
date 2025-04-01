@@ -119,7 +119,7 @@ class LineFollower:
         iSlice = self.scan_y
         img = np.copy(cam_img)
         img[iSlice : iSlice + self.scan_height, :, :] = mask_exp
-        # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
         display_str = []
         display_str.append("STEERING:{:.1f}".format(self.steering))
