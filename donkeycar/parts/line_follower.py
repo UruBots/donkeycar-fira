@@ -104,7 +104,7 @@ class LineFollower:
 
         # show some diagnostics
         if self.overlay_image:
-            cam_img = self.overlay_display(cam_img, mask, max_yellow, confidence)
+            cam_img = self.overlay_image_display(cam_img, mask, max_yellow, confidence)
 
         return self.steering, self.throttle, cam_img
 
@@ -135,3 +135,45 @@ class LineFollower:
 
         return img
 
+    def overlay_image_display(self, cam_img, mask, max_yellow, confidence):
+        '''
+        Composite mask on top of the original image.
+        Show some values we are using for control.
+        '''
+        # Ensure cam_img is a valid uint8 image
+        if cam_img.dtype != np.uint8:
+            print(f"cam_img dtype: {cam_img.dtype}")
+            cam_img = cam_img.astype(np.uint8)
+
+        # Convert grayscale or single-channel to BGR
+        if len(cam_img.shape) == 2 or cam_img.shape[2] == 1:
+            print(f"cam_img shape: {cam_img.shape}")
+            cam_img = cv2.cvtColor(cam_img, cv2.COLOR_GRAY2BGR)
+
+        # Ensure mask_exp has the same shape as the scan region
+        mask_exp = np.stack((mask,) * 3, axis=-1)
+        if mask_exp.shape[1] != cam_img.shape[1]:
+            print(f"mask_exp shape: {mask_exp.shape}")
+            mask_exp = cv2.resize(mask_exp, (cam_img.shape[1], self.scan_height))
+
+        iSlice = self.scan_y
+        img = np.copy(cam_img)
+
+        # Apply the mask overlay safely
+        img[iSlice: iSlice + self.scan_height, :, :] = mask_exp
+
+        display_str = [
+            f"STEERING: {self.steering:.1f}",
+            f"THROTTLE: {self.throttle:.2f}",
+            f"I YELLOW: {max_yellow}",
+            f"CONF: {confidence:.2f}"
+        ]
+
+        y = 10
+        x = 10
+
+        for s in display_str:
+            cv2.putText(img, s, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
+            y += 10
+
+        return img
