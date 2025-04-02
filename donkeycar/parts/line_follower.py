@@ -157,8 +157,8 @@ class LineFollower:
             mask_exp = cv2.resize(mask_exp, (cam_img.shape[1], self.scan_height))
 
         iSlice = self.scan_y
-        img = np.copy(cam_img)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cam_img.copy()
+        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         # Apply the mask overlay safely
         img[iSlice: iSlice + self.scan_height, :, :] = mask_exp
