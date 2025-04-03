@@ -46,11 +46,11 @@ class ZebraCrosswalkDetector(object):
         self.last_detection_time = 0
 
     def detect_crosswalk(self, img_arr, debug_visuals):
-        # img = np.copy(img_arr)
+        img = img_arr.copy()
         current_time = time.time()
         if current_time - self.last_detection_time >= 1.0 / self.detection_hz:
             self.last_detection_time = current_time
-            gray_img = cv2.cvtColor(img_arr, cv2.COLOR_BGR2GRAY)
+            gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray_img, 175, 225, apertureSize=3)
             
             # Use Hough Line Transform to detect lines
@@ -65,10 +65,11 @@ class ZebraCrosswalkDetector(object):
         return []
 
     def draw_crosswalk_lines(self, lines, img_arr):
-        img_arr = np.ascontiguousarray(img_arr)
+        img_arr = img_arr.copy()
         for line in lines:
             for x1, y1, x2, y2 in line:
                 cv2.line(img_arr, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        return img_arr
 
 class TurnManager(object):
     def __init__(self, turn_duration, initial_wait_time):
@@ -134,7 +135,7 @@ class FIRAEngineYolo(object):
         return cropped_img
 
     def detect_lane_and_correction(self, img):
-        img = np.copy(img)
+        img = img.copy()
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 200, 300, apertureSize=3)
         lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 50, minLineLength=50, maxLineGap=10)
@@ -161,7 +162,7 @@ class FIRAEngineYolo(object):
         return 0, img
 
     def detect_dashed_center_line(self, img):
-        img = np.copy(img)
+        img = img.copy()
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 150, 250, apertureSize=3)
 
@@ -200,7 +201,7 @@ class FIRAEngineYolo(object):
         return correction_angle, img
     
     def detect_yolo_signals(self, img_arr, current_time, throttle, angle):
-        img = np.copy(img_arr)
+        img = img_arr.copy()
 
         # Ensure img is a valid OpenCV image (uint8, 3 channels)
         if img is None or not isinstance(img, np.ndarray):
@@ -219,7 +220,7 @@ class FIRAEngineYolo(object):
         if len(img.shape) != 3 or img.shape[-1] != 3:
             raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
 
-        results = self.yolo_detector.run(img_arr)
+        results = self.yolo_detector.run(img)
         model = self.yolo_detector.model
         for result in results:
             for box in result.boxes:
@@ -248,7 +249,8 @@ class FIRAEngineYolo(object):
                     if(self.debug_visuals):
                         cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                         #cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-
+                        img_arr = img.copy()
+                        
                     distance = self.yolo_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
 
                     if self.debug_visuals:
@@ -285,16 +287,12 @@ class FIRAEngineYolo(object):
             return 0, 0, input_img_arr
 
         if self.state == 'wait-for-crosswalk':
-            crosswalk_lines = self.zebra_crosswalk_detector.detect_crosswalk(input_img_arr, self.debug_visuals)
-            if self.debug_visuals:
-                for line in crosswalk_lines:
-                    for x1, y1, x2, y2 in line:
-                        cv2.line(input_img_arr, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            crosswalk_lines = self.zebra_crosswalk_detector.detect_crosswalk(input_img_arr, self.debug_visuals)                
             if len(crosswalk_lines) >= 5:
                 self.state = 'wait-at-crosswalk'
                 self.stop_start_time = current_time
                 if self.debug_visuals:
-                    self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, input_img_arr)
+                    input_img_arr =self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, input_img_arr)
                 if self.debug:
                     print("Zebra crosswalk detected")
                 return 0, 0, input_img_arr
@@ -332,9 +330,8 @@ class FIRAEngineYolo(object):
                 # correction_angle, show_img = self.detect_lane_and_correction(input_img_arr)
                 # testear
                 correction_angle, show_img = self.detect_dashed_center_line(input_img_arr)
-                # if self.debug_visuals:
-                #     # cv2.imshow('Street', show_img)
-                #     # cv2.waitKey(1)
+                if self.debug_visuals:
+                    input_img_arr = show_img
                 if self.debug:
                     print("proceeding - correction_angle", correction_angle)
                 return correction_angle, 1, input_img_arr
