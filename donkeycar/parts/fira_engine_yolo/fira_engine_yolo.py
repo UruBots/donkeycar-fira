@@ -27,6 +27,7 @@ class YoloDetect(object):
         fps = 1 / (new_frame_time - prev_frame_time)
         prev_frame_time = new_frame_time
         cv2.putText(img,f"FPS: {int(fps)}",(10, 30),cv2.FONT_HERSHEY_SIMPLEX,1,(0, 255, 0),2,cv2.LINE_AA,)
+        return img
     
     def estimate_distance(self, known_width, focal_length, object_width_px):
         """ Calcula la distancia estimada de un objeto en cm. """
@@ -35,8 +36,10 @@ class YoloDetect(object):
         return (known_width * focal_length) / object_width_px
 
     def show_distance(self, distance, x, y, img_arr):
+        img_arr = img_arr.copy()
         # Mostrar distancia estimada en cm
         cv2.putText(img_arr, f"{distance:.2f} cm", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA,)
+        return img_arr
 
     def run_prediction(self, img_arr):
         results = self.model.predict(img_arr, imgsz=640, conf=0.5, iou=0.5, batch=4)
@@ -146,8 +149,8 @@ class FIRAEngineYolo(object):
         edges = cv2.Canny(gray, 200, 300, apertureSize=3)
         lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 50, minLineLength=50, maxLineGap=10)
 
-        if self.debug_visuals:
-            img = edges.copy()
+        # if self.debug_visuals:
+        #     img = edges.copy()
         
         if lines is not None:
             for line in lines:
@@ -226,7 +229,7 @@ class FIRAEngineYolo(object):
         if len(img.shape) != 3 or img.shape[-1] != 3:
             raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
 
-        results = self.yolo_detector.run_prediction(img)
+        results = self.yolo_detector.run(img)
         model = self.yolo_detector.model
         for result in results:
             for box in result.boxes:
@@ -256,11 +259,10 @@ class FIRAEngineYolo(object):
                         cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                         #cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                         img_arr = img.copy()
-
                     distance = self.yolo_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
 
                     if self.debug_visuals:
-                        self.yolo_detector.show_distance(distance, x1, y1, img)
+                        img_arr = self.yolo_detector.show_distance(distance, x1, y1, img)
 
                     if distance <= 10:
                         if class_name in ['Stop', 'No_entry', 'End']:
@@ -298,7 +300,7 @@ class FIRAEngineYolo(object):
                 self.state = 'wait-at-crosswalk'
                 self.stop_start_time = current_time
                 if self.debug_visuals:
-                    input_img_arr =self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, input_img_arr)
+                    input_img_arr = self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, input_img_arr)
                 if self.debug:
                     print("Zebra crosswalk detected")
                 return 0, 0, input_img_arr
@@ -361,7 +363,7 @@ class FIRAEngineYolo(object):
                     print("Searching with Yolo...")
                     print(f"YOLO response : angle: {angle}, throttle: {throttle} ")
                 if(self.debug_visuals):
-                    self.yolo_detector.show_fps(current_time, input_img_arr)
+                    input_img_arr = self.yolo_detector.show_fps(current_time, input_img_arr)
                 if angle and throttle:
                     return angle, throttle, input_img_arr
             
