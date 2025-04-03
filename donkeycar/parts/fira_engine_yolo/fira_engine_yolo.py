@@ -11,8 +11,7 @@ KNOWN_WIDTH = 5  # cm (Ancho real del objeto de referencia)
 FOCAL_LENGTH = 300  # Ajustar según calibración
 
 cv2.setUseOptimized(True)
-cv2.cuda.setDevice(0)
-
+cv2.setNumThreads(4)
 model_path = os.path.abspath("./model/yolov8-trained.pt")
 
 class YoloDetect(object):
