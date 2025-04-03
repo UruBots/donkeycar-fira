@@ -10,6 +10,9 @@ KNOWN_DISTANCE = 10  # cm (Distancia de referencia)
 KNOWN_WIDTH = 5  # cm (Ancho real del objeto de referencia)
 FOCAL_LENGTH = 300  # Ajustar según calibración
 
+cv2.setUseOptimized(True)
+cv2.cuda.setDevice(0)
+
 model_path = os.path.abspath("./model/yolov8-trained.pt")
 
 class YoloDetect(object):
@@ -35,6 +38,10 @@ class YoloDetect(object):
     def show_distance(self, distance, x, y, img_arr):
         # Mostrar distancia estimada en cm
         cv2.putText(img_arr, f"{distance:.2f} cm", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA,)
+
+    def run_prediction(self, img_arr):
+        results = self.model.predict(img_arr, imgsz=640, conf=0.5, iou=0.5, batch=4)
+        return results
 
     def run(self, img_arr):
         results = self.model(img_arr)
@@ -220,7 +227,7 @@ class FIRAEngineYolo(object):
         if len(img.shape) != 3 or img.shape[-1] != 3:
             raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
 
-        results = self.yolo_detector.run(img)
+        results = self.yolo_detector.run_prediction(img)
         model = self.yolo_detector.model
         for result in results:
             for box in result.boxes:
@@ -250,7 +257,7 @@ class FIRAEngineYolo(object):
                         cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                         #cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                         img_arr = img.copy()
-                        
+
                     distance = self.yolo_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
 
                     if self.debug_visuals:
