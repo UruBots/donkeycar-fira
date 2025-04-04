@@ -457,6 +457,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     if cfg.FIRA_ENGINE_YOLO:
         from donkeycar.parts.fira_engine_yolo.fira_engine_yolo \
             import FIRAEngineYolo
+        
         V.add(FIRAEngineYolo(
             model_folder = cfg.MODELS_PATH,
             yolo_model_name=cfg.FIRA_YOLO_MODEL,
