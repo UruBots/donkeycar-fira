@@ -114,7 +114,7 @@ class ProceedManager(object):
 
 class FIRAEngineYolo(object):
     def __init__(self, model_folder, yolo_model_name, yolo_classes, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
-        self.yolo_detector = YoloDetect(model_folder, yolo_model_name, yolo_classes)
+        self.yolo_detector = YoloDetect(model_folder, yolo_model_name)
         self.yolo_classes = self.yolo_detector.classes
         self.zebra_crosswalk_detector = ZebraCrosswalkDetector(zebra_hz)
         self.turn_manager = TurnManager(turn_duration,turn_initial_wait_duration)
