@@ -1,17 +1,18 @@
 import os
+import time
+import math
 import numpy as np
 import cv2
 from ultralytics import YOLO
-import time
-import math
-
+from ultralytics.utils import LOGGER
+LOGGER.setLevel("ERROR")
 # Parámetros de calibración para estimar la distancia
 KNOWN_DISTANCE = 10  # cm (Distancia de referencia)
 KNOWN_WIDTH = 5  # cm (Ancho real del objeto de referencia)
 FOCAL_LENGTH = 300  # Ajustar según calibración
 
-cv2.setUseOptimized(True)
-cv2.setNumThreads(4)
+# cv2.setUseOptimized(True)
+# cv2.setNumThreads(4)
 
 class YoloDetect(object):
     def __init__(self, model_folder, model_name):
@@ -45,7 +46,7 @@ class YoloDetect(object):
         return results
 
     def run(self, img_arr):
-        results = self.model(img_arr)
+        results = self.model(img_arr, verbose=False)
         return results
 
 class ZebraCrosswalkDetector(object):
@@ -141,15 +142,17 @@ class FIRAEngineYolo(object):
         img_height, img_width, _ = img.shape
         cropped_img = img[int(img_height * crop_ratio):, :]
         return cropped_img
+    
+    def resize_image(self, image):
+        img = image.copy()  # Copy the input image to avoid modifying the original image
+        img = cv2.resize(img, (640, 480))  # Assign the resized image back to img
+        return img
 
     def detect_lane_and_correction(self, img):
         img = img.copy()
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 200, 300, apertureSize=3)
         lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 50, minLineLength=50, maxLineGap=10)
-
-        # if self.debug_visuals:
-        #     img = edges.copy()
         
         if lines is not None:
             for line in lines:
@@ -210,6 +213,7 @@ class FIRAEngineYolo(object):
     
     def detect_yolo_signals(self, img_arr, current_time, throttle, angle):
         img = img_arr.copy()
+        img = self.resize_image(img)
 
         # Ensure img is a valid OpenCV image (uint8, 3 channels)
         if img is None or not isinstance(img, np.ndarray):
@@ -234,7 +238,8 @@ class FIRAEngineYolo(object):
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
-                cls = int(box.cls[0])
+                cls_tensor = box.cls[0]
+                cls = int(cls_tensor.item()) if hasattr(cls_tensor, "item") else int(cls_tensor)
                 class_name = "Unknown"  # Get class name from YOLO model
 
                 if isinstance(model.names, dict):  # If it's a dictionary
@@ -248,6 +253,8 @@ class FIRAEngineYolo(object):
                     print(f"Detected: {class_name} (Class ID: {cls}) with Confidence: {conf:.2f}")
 
                 object_width_px = x2 - x1  # Ancho del objeto en píxeles
+                
+                print(f"Detection - {class_name}: {conf:.2f}")
 
                 if conf > 0.7:
                     #class_name = f"{self.yolo_classes[cls]}: {conf:.2f}"
@@ -258,6 +265,7 @@ class FIRAEngineYolo(object):
                         cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                         #cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                         img_arr = img.copy()
+                    
                     distance = self.yolo_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
 
                     if self.debug_visuals:
