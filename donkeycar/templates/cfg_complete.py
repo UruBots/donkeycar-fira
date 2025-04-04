@@ -783,6 +783,7 @@ DEBUG = True
 
 #FIRA Engine YOLO
 FIRA_ENGINE_YOLO = True
+FIRA_MODEL_NAME = 'yolov8-trained.pt'
 FIRA_YOLO_HZ = 15
 FIRA_YOLO_CLASSES = ['End', 'Forward', 'Left', 'No_entry', 'Right', 'Stop']
 FIRA_DEBUG_VISUALS = False

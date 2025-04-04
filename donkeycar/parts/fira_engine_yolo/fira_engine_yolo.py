@@ -12,12 +12,11 @@ FOCAL_LENGTH = 300  # Ajustar según calibración
 
 cv2.setUseOptimized(True)
 cv2.setNumThreads(4)
-model_path = os.path.abspath("./model/yolov8-trained.pt")
 
 class YoloDetect(object):
-    def __init__(self, model_path, classes_dict):
-        self.model = YOLO(model_path)
-        self.classes = classes_dict
+    def __init__(self, model_folder, model_name):
+        self.model = YOLO(os.path.join(model_folder, model_name), task='detect')
+        self.classes = self.model.names
         
     def show_fps(self, prev_frame_time, img_arr):
         img = np.copy(img_arr)
@@ -114,9 +113,9 @@ class ProceedManager(object):
         return self.correction_duration <= elapsed_time < (self.correction_duration + self.straight_duration)
 
 class FIRAEngineYolo(object):
-    def __init__(self, yolo_classes, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
-        self.yolo_detector = YoloDetect(model_path, yolo_classes)
-        self.yolo_classes = yolo_classes
+    def __init__(self, model_folder, yolo_model_name, yolo_classes, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
+        self.yolo_detector = YoloDetect(model_folder, yolo_model_name, yolo_classes)
+        self.yolo_classes = self.yolo_detector.classes
         self.zebra_crosswalk_detector = ZebraCrosswalkDetector(zebra_hz)
         self.turn_manager = TurnManager(turn_duration,turn_initial_wait_duration)
         self.proceed_manager = ProceedManager(proceed_correction_duration, proceed_straight_duration)
@@ -250,7 +249,7 @@ class FIRAEngineYolo(object):
 
                 object_width_px = x2 - x1  # Ancho del objeto en píxeles
 
-                if conf > 0.5:
+                if conf > 0.7:
                     #class_name = f"{self.yolo_classes[cls]}: {conf:.2f}"
                     self.detected_object = class_name
                     color = (0, 255, 0)  # Color del cuadro (verde)
