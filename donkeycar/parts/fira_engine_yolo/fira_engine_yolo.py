@@ -263,7 +263,7 @@ class FIRAEngineYolo(object):
                     if self.debug_visuals:
                         img_arr = self.yolo_detector.show_distance(distance, x1, y1, img)
 
-                    if distance <= 10:
+                    if distance >= 10:
                         if class_name in ['Stop', 'No_entry', 'End']:
                             self.state = 'stop'
                             self.stop_start_time = current_time
