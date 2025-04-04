@@ -460,7 +460,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         
         V.add(FIRAEngineYolo(
             model_folder = cfg.MODELS_PATH,
-            yolo_model_name=cfg.FIRA_YOLO_MODEL,
+            yolo_model_name=cfg.FIRA_MODEL_NAME,
             yolo_classes=cfg.FIRA_YOLO_CLASSES,
             apriltag_hz=cfg.APRILTAG_HZ,
             zebra_hz=cfg.ZEBRA_HZ,
