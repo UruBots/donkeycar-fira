@@ -11,8 +11,8 @@ KNOWN_DISTANCE = 10  # cm (Distancia de referencia)
 KNOWN_WIDTH = 5  # cm (Ancho real del objeto de referencia)
 FOCAL_LENGTH = 300  # Ajustar según calibración
 
-# cv2.setUseOptimized(True)
-# cv2.setNumThreads(4)
+cv2.setUseOptimized(True)
+cv2.setNumThreads(4)
 
 class YoloDetect(object):
     def __init__(self, model_folder, model_name):
@@ -20,12 +20,13 @@ class YoloDetect(object):
         self.classes = self.model.names
         
     def show_fps(self, prev_frame_time, img_arr):
-        img = np.copy(img_arr)
+        img = img_arr.copy()
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
         new_frame_time = time.time()
         fps = 1 / (new_frame_time - prev_frame_time)
         prev_frame_time = new_frame_time
+        print(f"FPS: {fps:.2f}")
         cv2.putText(img,f"FPS: {int(fps)}",(10, 30),cv2.FONT_HERSHEY_SIMPLEX,1,(0, 255, 0),2,cv2.LINE_AA,)
         return img
     
