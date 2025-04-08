@@ -264,14 +264,12 @@ class FIRAEngineYolo(object):
                     logger.info(f"Detection - {class_name}: {conf:.2f}")
 
                     if conf > 0.7:
-                        #class_name = f"{self.yolo_classes[cls]}: {conf:.2f}"
                         self.detected_object = class_name
                         color = (0, 255, 0)  # Color del cuadro (verde)
 
                         if(self.debug_visuals):
                             cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-                            #cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-                            img_arr = img.copy()
+                            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                         
                         distance = self.yolo_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, object_width_px)
 
