@@ -237,10 +237,10 @@ class FIRAEngineYolo(object):
             raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
 
         results = self.yolo_detector.run(img)
-        if self.debug:
-            logger.info(f"YOLO results: {results}")
+        # if self.debug:
+        #     logger.info(f"YOLO results: {results}")
 
-        if results is None or len(results) == 0:
+        if results is not None or len(results) != 0:
             model = self.yolo_detector.model
             for result in results:
                 for box in result.boxes:
@@ -261,7 +261,7 @@ class FIRAEngineYolo(object):
                         logger.info(f"Detected: {class_name} (Class ID: {cls}) with Confidence: {conf:.2f}")
 
                     object_width_px = x2 - x1  # Ancho del objeto en píxeles
-                    logger.info("Detection - {class_name}: {conf:.2f}")
+                    logger.info(f"Detection - {class_name}: {conf:.2f}")
 
                     if conf > 0.7:
                         #class_name = f"{self.yolo_classes[cls]}: {conf:.2f}"
