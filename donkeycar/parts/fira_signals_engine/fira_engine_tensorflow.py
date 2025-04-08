@@ -140,8 +140,9 @@ class ProceedManager(object):
         return self.correction_duration <= elapsed_time < (self.correction_duration + self.straight_duration)
 
 class FIRAEngineTensorFlow(object):
-    def __init__(self, model_folder, tf_model_name, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
+    def __init__(self, model_folder, tf_model_name, fira_classes, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
         self.tf_detector = TensorflowDetect(model_folder, tf_model_name)
+        self.tf_detector.classes = fira_classes
         self.zebra_crosswalk_detector = ZebraCrosswalkDetector(zebra_hz)
         self.turn_manager = TurnManager(turn_duration, turn_initial_wait_duration)
         self.proceed_manager = ProceedManager(proceed_correction_duration, proceed_straight_duration)
@@ -286,7 +287,7 @@ class FIRAEngineTensorFlow(object):
             self.last_tf_detection_time = current_time
             if(self.debug):
                 logger.info("Searching with Tensorflow...")
-                logger.info(f"YOLO response : angle: {angle}, throttle: {throttle}")
+                logger.info(f"TENSORFLOW response : angle: {angle}, throttle: {throttle}")
             if(self.debug_visuals):
                 input_img_arr = self.tf_detector.show_fps(self.last_tf_detection_time, input_img_arr)
             return self.detect_tf_signals(input_img_arr, current_time, throttle, angle)

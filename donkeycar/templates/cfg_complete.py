@@ -793,6 +793,6 @@ FIRA_DEBUG = True
 FIRA_ENGINE_TF = False
 FIRA_TF_MODEL_NAME = 'best_saved_model_resize/best_float16.tflite'
 FIRA_TF_HZ = 15
-FIRA_TF_CLASSES = {0: 'End', 1: 'Forward', 2: 'Left', 3: 'No_entry', 4: 'Right', 5: 'Stop'}
+FIRA_TF_CLASSES = {1: 'Stop', 2: 'No_entry', 3: 'End', 4: 'Left', 5: 'Right', 6: 'Forward'} 
 FIRA_TF_DEBUG_VISUALS = True
 FIRA_TF_DEBUG = False
