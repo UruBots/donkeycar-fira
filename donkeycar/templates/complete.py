@@ -455,7 +455,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         
     #FIRA YOLO Engine
     if cfg.FIRA_ENGINE_YOLO:
-        from donkeycar.parts.fira_engine_yolo.fira_engine_yolo \
+        from donkeycar.parts.fira_engine.fira_engine_yolo \
             import FIRAEngineYolo
         
         V.add(FIRAEngineYolo(
@@ -475,8 +475,34 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             debug=cfg.FIRA_DEBUG
         ),
         inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
-        outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        outputs=['pilot/angle', 'pilot/throttle', 'ui/image_array'],
         run_condition="run_pilot")
+
+
+    #FIRA YOLO TENSORFLOW
+    if cfg.FIRA_ENGINE_TF:
+        from donkeycar.parts.fira_engine.fira_engine_tensorflow \
+            import FIRAEngineTensorFlow
+        
+        V.add(FIRAEngineTensorFlow(
+            model_folder = cfg.MODELS_PATH,
+            fira_model_name=cfg.FIRA_TF_MODEL_NAME,
+            fira_classes=cfg.FIRA_TF_CLASSES,
+            apriltag_hz=cfg.APRILTAG_HZ,
+            zebra_hz=cfg.ZEBRA_HZ,
+            top_crop_ratio=cfg.TOP_CROP_RATIO,
+            stop_duration=cfg.STOP_DURATION,
+            turn_duration=cfg.TURN_DURATION,
+            turn_initial_wait_duration=cfg.TURN_INITIAL_WAIT_DURATION,
+            proceed_correction_duration=cfg.PROCEED_CORRECTION_DURATION,
+            proceed_straight_duration=cfg.PROCEED_STRAIGHT_DURATION,
+            wait_duration=cfg.WAIT_DURATION,
+            debug_visuals=cfg.FIRA_TF_DEBUG_VISUALS,
+            debug=cfg.FIRA_TF_DEBUG
+        ),
+        inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        outputs=['pilot/angle', 'pilot/throttle', 'ui/image_array'],
+        run_condition="run_pilot")   
     #
     # to give the car a boost when starting ai mode in a race.
     # This will also override the stop sign detector so that

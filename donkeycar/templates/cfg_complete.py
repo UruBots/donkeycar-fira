@@ -788,3 +788,11 @@ FIRA_YOLO_HZ = 15
 FIRA_YOLO_CLASSES = ['End', 'Forward', 'Left', 'No_entry', 'Right', 'Stop']
 FIRA_DEBUG_VISUALS = False
 FIRA_DEBUG = True
+
+#FIRA Engine TENSORFLOW
+FIRA_ENGINE_TF = False
+FIRA_TF_MODEL_NAME = 'best_saved_model_resize/best_float16.tflite'
+FIRA_TF_HZ = 15
+FIRA_TF_CLASSES = ['End', 'Forward', 'Left', 'No_entry', 'Right', 'Stop']
+FIRA_TF_DEBUG_VISUALS = False
+FIRA_TF_DEBUG = True
