@@ -287,6 +287,8 @@ class FIRAEngineTensorFlow(object):
             if(self.debug):
                 logger.info("Searching with Tensorflow...")
                 logger.info(f"YOLO response : angle: {angle}, throttle: {throttle}")
+            if(self.debug_visuals):
+                input_img_arr = self.tf_detector.show_fps(self.last_tf_detection_time, input_img_arr)
             return self.detect_tf_signals(input_img_arr, current_time, throttle, angle)
         
         return angle, throttle, input_img_arr
