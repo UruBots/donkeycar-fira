@@ -455,7 +455,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         
     #FIRA YOLO Engine
     if cfg.FIRA_ENGINE_YOLO:
-        from donkeycar.parts.fira_engine.fira_engine_yolo \
+        from donkeycar.parts.fira_signals_engine.fira_engine_yolo \
             import FIRAEngineYolo
         
         V.add(FIRAEngineYolo(
@@ -481,7 +481,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
 
     #FIRA YOLO TENSORFLOW
     if cfg.FIRA_ENGINE_TF:
-        from donkeycar.parts.fira_engine.fira_engine_tensorflow \
+        from donkeycar.parts.fira_signals_engine.fira_engine_tensorflow \
             import FIRAEngineTensorFlow
         
         V.add(FIRAEngineTensorFlow(
