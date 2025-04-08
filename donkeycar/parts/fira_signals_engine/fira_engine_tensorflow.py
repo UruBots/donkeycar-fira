@@ -203,23 +203,44 @@ class FIRAEngineTensorFlow(object):
 
         # Assuming you have a list of class names and confidence threshold
         for i, score in enumerate(scores):
+           # Assuming you have a list of class names and confidence threshold
             if score > 0.7:
                 class_id = class_ids[i]
                 box = boxes[i]
                 y1, x1, y2, x2 = box
 
-                class_name = "Unknown"  # Define your classes mapping here
+                # Map class ID to class name using class_map
+                class_name = self.tf_detector.classes.get(class_id, "Unknown")
+
+                # Estimate distance if necessary
                 distance = self.tf_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, x2 - x1)
 
+                # Log the distance for debugging
+                if self.debug:
+                    logger.info(f"Detected {class_name} with distance: {distance:.2f} meters")
+
+                if self.debug_visuals:
+                    color = (0, 255, 0)  # Default to green for bounding box
+                    # Draw the rectangle around the detected object
+                    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+                    # Draw the label with confidence score
+                    label = f"{class_name}: {score:.2f}"
+                    cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+                # Handle specific class names and update state accordingly
                 if class_name in ['Stop', 'No_entry', 'End']:
-                    self.state = 'stop'
-                    self.stop_start_time = current_time
-                    break
+                    # Use distance to trigger actions (e.g., stop if the distance is too close)
+                    if distance < 2.0:  # Example threshold: stop if less than 2 meters away
+                        self.state = 'stop'
+                        self.stop_start_time = current_time
+                        break
                 elif class_name in ['Left', 'Right', 'Forward']:
-                    self.state = 'wait-for-crosswalk'
-                    self.saved_angle = angle
-                    self.saved_throttle = throttle
-                    break
+                    # For turning or moving forward, you may want to consider distance to make decisions
+                    if distance < 3.0:  # Example threshold for making a decision
+                        self.state = 'wait-for-crosswalk'
+                        self.saved_angle = angle
+                        self.saved_throttle = throttle
+                        break
 
         return angle, throttle, img_arr
 
