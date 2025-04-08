@@ -486,7 +486,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         
         V.add(FIRAEngineTensorFlow(
             model_folder = cfg.MODELS_PATH,
-            fira_model_name=cfg.FIRA_TF_MODEL_NAME,
+            tf_model_name=cfg.FIRA_TF_MODEL_NAME,
             fira_classes=cfg.FIRA_TF_CLASSES,
             apriltag_hz=cfg.APRILTAG_HZ,
             zebra_hz=cfg.ZEBRA_HZ,
