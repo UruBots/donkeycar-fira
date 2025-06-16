@@ -4,7 +4,6 @@ import cv2
 import apriltag
 from PIL import Image
 import time
-import pyrealsense2 as rs
 
 class AprilTagDetector(object):
     def __init__(self, tag_dict, proximity_thresholds):
@@ -112,12 +111,6 @@ class FIRAEngine(object):
         self.last_apriltag_detection_time = 0
         self.apriltag_hz = apriltag_hz
         self.top_crop_ratio = top_crop_ratio
-
-        # Initialize RealSense pipeline
-        # self.pipeline = rs.pipeline()
-        # self.config = rs.config()
-        # self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        # self.pipeline.start(self.config)
 
         # Variable to track the detected AprilTag type
         self.detected_apriltag = None
