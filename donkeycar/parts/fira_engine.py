@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import cv2
 import apriltag
@@ -113,10 +114,10 @@ class FIRAEngine(object):
         self.top_crop_ratio = top_crop_ratio
 
         # Initialize RealSense pipeline
-        self.pipeline = rs.pipeline()
-        self.config = rs.config()
-        self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        self.pipeline.start(self.config)
+        # self.pipeline = rs.pipeline()
+        # self.config = rs.config()
+        # self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        # self.pipeline.start(self.config)
 
         # Variable to track the detected AprilTag type
         self.detected_apriltag = None
@@ -124,13 +125,12 @@ class FIRAEngine(object):
         if self.debug:
             print("FIRA engine running...")
 
-    def get_realsense_frame(self):
-        frames = self.pipeline.wait_for_frames()
-        color_frame = frames.get_color_frame()
-        if not color_frame:
-            return None
-        color_image = np.ascontiguousarray(np.asarray(color_frame.get_data()))
-        return color_image
+    # scalate image to 640x480
+    def scale_image(self, img, width=640, height=480):
+        img_height, img_width, _ = img.shape
+        if img_height != height or img_width != width:
+            img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
+        return img
 
     def crop_image(self, img, crop_ratio=None):
         if crop_ratio is None:
@@ -138,6 +138,45 @@ class FIRAEngine(object):
         img_height, img_width, _ = img.shape
         cropped_img = img[int(img_height * crop_ratio):, :]
         return cropped_img
+    
+    def detect_dashed_center_line(self, img):
+        img = img.copy()
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 150, 250, apertureSize=3)
+
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 50, minLineLength=50, maxLineGap=30)
+
+        if lines is not None:
+            img_height, img_width = img.shape[:2]
+            center_x = img_width // 2
+            best_line = None
+            min_distance = float('inf')
+            correction_angle = 0  # Default angle is 0 (no correction needed)
+
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                line_center_x = (x1 + x2) // 2
+                distance_to_center = abs(line_center_x - center_x)
+
+                # Filtrar líneas casi verticales y cercanas al centro
+                if abs(x2 - x1) < 30 and distance_to_center < min_distance:
+                    best_line = (x1, y1, x2, y2)
+                    min_distance = distance_to_center
+
+                    # Calcular el ángulo de inclinación
+                    delta_y = y2 - y1
+                    delta_x = x2 - x1
+                    correction_angle = math.degrees(math.atan2(delta_y, delta_x))  # Convert to degrees
+
+            if best_line:
+                x1, y1, x2, y2 = best_line
+                cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 3)  # Dibujar en verde
+                if self.debug_visuals:
+                    # Mostrar el ángulo de corrección en la imagen
+                    text_position = (50, 50)  # Coordenadas donde se mostrará el texto
+                    cv2.putText(img, f"Angle: {correction_angle:.2f} deg", text_position, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+        return correction_angle, img
 
     def detect_lane_and_correction(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -194,12 +233,8 @@ class FIRAEngine(object):
 
     def run(self, angle, throttle, input_img_arr):
         current_time = time.time()
-
-        realsense_img = self.get_realsense_frame()
-        cropped_realsense_img = self.crop_image(realsense_img)
-        cropped_input_img = self.crop_image(input_img_arr, 0.65)
-        show_img = cropped_input_img.copy()
-        if realsense_img is None:
+        show_img = self.scale_image(input_img_arr)
+        if show_img is None:
             return angle, throttle, input_img_arr
 
         if self.state == 'stop':
@@ -217,7 +252,7 @@ class FIRAEngine(object):
                 self.state = 'wait-at-crosswalk'
                 self.stop_start_time = current_time
                 if self.debug_visuals:
-                    self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, cropped_realsense_img)
+                    self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, show_img)
                 if self.debug:
                     print("Zebra crosswalk detected")
                 return 0, 0, input_img_arr
@@ -255,7 +290,9 @@ class FIRAEngine(object):
                 cv2.imshow('Street', show_img)
                 cv2.waitKey(1)
             if self.proceed_manager.is_correcting():
-                correction_angle, show_img = self.detect_lane_and_correction(show_img)
+                # test
+                correction_angle, show_img = self.detect_dashed_center_line(show_img)
+                # correction_angle, show_img = self.detect_lane_and_correction(show_img)
                 if self.debug_visuals:
                     cv2.imshow('Street', show_img)
                     cv2.waitKey(1)
@@ -275,13 +312,13 @@ class FIRAEngine(object):
                 if self.debug:
                     print("Searching for AprilTag...")
                 # Detect AprilTags
-                angle, throttle, cropped_realsense_img = self.detect_apriltags_and_update_state(cropped_realsense_img, current_time, throttle, angle)
+                angle, throttle, show_img = self.detect_apriltags_and_update_state(show_img, current_time, throttle, angle)
                 if angle and throttle:
                     return angle, throttle, input_img_arr
 
         # Show current detection results if debug_visuals is enabled
         if self.debug_visuals:
-            cv2.imshow('Realsense', cropped_realsense_img)
+            cv2.imshow('Realsense', show_img)
             cv2.imshow('Street', show_img)
             cv2.waitKey(1)
             

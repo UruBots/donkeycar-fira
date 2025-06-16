@@ -44,13 +44,19 @@ class YoloDetect(object):
         # Mostrar distancia estimada en cm
         cv2.putText(img_arr, f"{distance:.2f} cm", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA,)
         return img_arr
+    
+    def resize_image(self, image):
+        img = image.copy()  # Copy the input image to avoid modifying the original image
+        img = cv2.resize(img, (640, 480))  # Assign the resized image back to img
+        return img
 
     def run_prediction(self, img_arr):
         results = self.model.predict(img_arr, imgsz=160, conf=0.5, iou=0.5, batch=4)
         return results
 
     def run(self, img_arr):
-        results = self.model(img_arr, verbose=False)
+        img = self.resize_image(img_arr)
+        results = self.model(img, verbose=False)
         return results
 
 class ZebraCrosswalkDetector(object):
@@ -263,6 +269,14 @@ class FIRAEngineYolo(object):
                     object_width_px = x2 - x1  # Ancho del objeto en píxeles
                     logger.info(f"Detection - {class_name}: {conf:.2f}")
 
+
+                    if(self.debug_visuals):
+                        bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106), 
+                                        (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
+                        color = bbox_colors[cls % 10]
+                        cv2.putText(img, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+
                     if conf > 0.7:
                         self.detected_object = class_name
                         color = (0, 255, 0)  # Color del cuadro (verde)
@@ -297,24 +311,25 @@ class FIRAEngineYolo(object):
     def run(self, angle, throttle, input_img_arr):
         current_time = time.time()        
         # cropped_input_img = self.crop_image(input_img_arr, 0.65)
+        ui_image_output = input_img_arr.copy()
 
         if self.state == 'stop':
             if current_time - self.stop_start_time >= self.stop_duration:
                 self.state = 'idle'
-            return 0, 0, input_img_arr
+            return 0, 0, ui_image_output
 
         if self.state == 'wait-for-crosswalk':
-            crosswalk_lines = self.zebra_crosswalk_detector.detect_crosswalk(input_img_arr, self.debug_visuals)                
+            crosswalk_lines = self.zebra_crosswalk_detector.detect_crosswalk(ui_image_output, self.debug_visuals)                
             if len(crosswalk_lines) >= 5:
                 self.state = 'wait-at-crosswalk'
                 self.stop_start_time = current_time
                 if self.debug_visuals:
-                    input_img_arr = self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, input_img_arr)
+                    input_img_arr = self.zebra_crosswalk_detector.draw_crosswalk_lines(crosswalk_lines, ui_image_output)
                 if self.debug:
                     logger.info("Zebra crosswalk detected")
 
                 return 0, 0, input_img_arr
-            return angle, throttle, input_img_arr
+            return angle, throttle, ui_image_output
 
         if self.state == 'wait-at-crosswalk':
             if current_time - self.stop_start_time >= self.wait_duration:
@@ -328,55 +343,55 @@ class FIRAEngineYolo(object):
                     self.proceed_manager.start_proceed()
                     self.state = 'proceeding'
                 self.detected_object = None
-                return 0, 0, input_img_arr
-            return 0, 0, input_img_arr
+                return 0, 0, ui_image_output
+            return 0, 0, ui_image_output
 
         if self.state in ['turn_left', 'turn_right']:
             if self.turn_manager.is_waiting():
-                return 0, 1, input_img_arr
+                return 0, 1, ui_image_output
             if self.turn_manager.is_turning():
                 turn_angle = -1 if self.state == 'turn_left' else 1
                 turn_throttle = 1
-                return turn_angle, turn_throttle, input_img_arr
+                return turn_angle, turn_throttle, ui_image_output
             else:
                 self.state = 'idle'
                 self.detected_object = None
-                return angle, throttle, input_img_arr
+                return angle, throttle, ui_image_output
 
         if self.state == 'proceeding':
             if self.proceed_manager.is_correcting():
                 # correction_angle, show_img = self.detect_lane_and_correction(input_img_arr)
                 # testear
-                correction_angle, show_img = self.detect_dashed_center_line(input_img_arr)
+                correction_angle, show_img = self.detect_dashed_center_line(ui_image_output)
                 if self.debug_visuals:
-                    input_img_arr = show_img
+                    ui_image_output = show_img
                 if self.debug:
                     logger.info(f"proceeding - correction_angle: {correction_angle}")
 
-                return correction_angle, 1, input_img_arr
+                return correction_angle, 1, ui_image_output
             elif self.proceed_manager.is_going_straight():
-                return 0, 1, input_img_arr
+                return 0, 1, ui_image_output
             else:
                 self.state = 'idle'
                 self.detected_object = None
-                return 0, 1, input_img_arr
+                return 0, 1, ui_image_output
 
         if self.state == 'idle':
             if current_time - self.last_yolo_detection_time < 1.0 / self.apriltag_hz:
                 if self.debug:
                     logger.info("IDLE - EARLY EXIT...")
-                    return angle, throttle, input_img_arr  # Early exit
+                    return angle, throttle, ui_image_output  # Early exit
             
             if current_time - self.last_yolo_detection_time >= 1.0 / self.apriltag_hz:  # Detect every 1 second    
                 self.last_yolo_detection_time = current_time
-                angle, throttle, input_img_arr = self.detect_yolo_signals(input_img_arr, current_time, throttle, angle)
+                angle, throttle, ui_image_output = self.detect_yolo_signals(ui_image_output, current_time, throttle, angle)
                 if(self.debug):
                     logger.info("Searching with Yolo...")
                     logger.info(f"YOLO response : angle: {angle}, throttle: {throttle}")
                 if(self.debug_visuals):
-                    input_img_arr = self.yolo_detector.show_fps(current_time, input_img_arr)
+                    ui_image_output = self.yolo_detector.show_fps(current_time, ui_image_output)
                 if angle and throttle:
-                    return angle, throttle, input_img_arr
+                    return angle, throttle, ui_image_output
             
-        return angle, throttle, input_img_arr
+        return angle, throttle, ui_image_output
     
