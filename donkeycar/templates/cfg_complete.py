@@ -1,18 +1,3 @@
-"""
-CAR CONFIG
-
-This file is read by your car application's manage.py script to change the car
-performance.
-
-EXAMPLE
------------
-import dk
-cfg = dk.load_config(config_path='~/mycar/config.py')
-print(cfg.CAMERA_RESOLUTION)
-
-"""
-
-
 import os
 
 #PATHS
@@ -20,8 +5,40 @@ CAR_PATH = PACKAGE_PATH = os.path.dirname(os.path.realpath(__file__))
 DATA_PATH = os.path.join(CAR_PATH, 'data')
 MODELS_PATH = os.path.join(CAR_PATH, 'models')
 
+FIRA_TAG_DICT = {
+    0: 'FORWARD',
+    1: 'TURN_RIGHT',
+    2: 'TURN_RIGHT',
+    3: 'TURN_LEFT',
+    4: 'DEAD_END',
+    5: 'TURN_LEFT'
+}
+
+
+FIRA_PROXIMITY_THRESHOLDS = {
+    0: 14.0,
+    1: 14.0,
+    2: 14.0,
+    3: 14.0,
+    4: 14.0,
+    5: 14.0
+}
+
+FIRA_CAMERA_TO_FRONT = 0.15
+FIRA_VEHICLE_WIDTH = 0.12
+FIRA_VEHICLE_LENGTH = 0.25
+
+FIRA_USE_ROUTE_PLAN = False
+FIRA_ROUTE_PLAN = ['FORWARD', 'TURN_RIGHT', 'TURN_LEFT', 'STOP']
+FIRA_DEBUG = True
+FIRA_MODULAR = True
+FIRA_REQUIRE_ZEBRA = False
+# For IMAGE_LIST camera
+# PATH_MASK = "~/mycar/data/tub_1_20-03-12/*.jpg"
+# Activar para enviar la configuración personalizada de cámara al simulador
+
 #VEHICLE
-DRIVE_LOOP_HZ = 20      # the vehicle loop will pause if faster than this speed.
+DRIVE_LOOP_HZ = 24      # the vehicle loop will pause if faster than this speed.
 MAX_LOOPS = None        # the vehicle loop can abort after this many iterations, when given a positive integer.
 
 #CAMERA
@@ -38,8 +55,42 @@ CSIC_CAM_GSTREAMER_FLIP_PARM = 0 # (0 => none , 4 => Flip horizontally, 6 => Fli
 BGR2RGB = False  # true to convert from BRG format to RGB format; requires opencv
 SHOW_PILOT_IMAGE = False  # show the image used to do the inference when in autopilot mode
 
-# For IMAGE_LIST camera
-# PATH_MASK = "~/mycar/data/tub_1_20-03-12/*.jpg"
+
+DRIVE_TRAIN_TYPE = "PWM_STEERING_THROTTLE"
+
+
+PWM_STEERING_THROTTLE = {
+    "PWM_STEERING_PIN": "PCA9685.1:40.14",   # PWM output pin for steering servo
+    "PWM_STEERING_SCALE": 1.0,              # used to compensate for PWM frequency differents from 60hz; NOT for adjusting steering range
+    "PWM_STEERING_INVERTED": False,         # True if hardware requires an inverted PWM pulse
+    "PWM_THROTTLE_PIN": "PCA9685.1:40.10",   # PWM output pin for ESC
+    "PWM_THROTTLE_SCALE": 1.0,              # used to compensate for PWM frequence differences from 60hz; NOT for increasing/limiting speed
+    "PWM_THROTTLE_INVERTED": False,         # True if hardware requires an inverted PWM pulse
+    "STEERING_LEFT_PWM": 420,               #pwm value for full left steering
+    "STEERING_RIGHT_PWM": 210,              #pwm value for full right steering
+    "THROTTLE_FORWARD_PWM": 505,            #pwm value for max forward throttle
+    "THROTTLE_STOPPED_PWM": 370,            #pwm value for no movement
+    "THROTTLE_REVERSE_PWM": 220,            #pwm value for max reverse throttle
+}
+
+
+
+#FIRA Engine
+FIRA_ENGINE = False
+APRILTAG_HZ = 15
+ZEBRA_HZ = 15
+STOP_DURATION = 5
+TOP_CROP_RATIO = 0.0  # Realsense cropping ratio, 0.0 is no cropping, 1.0 is no picture
+PROXIMITY_THRESHOLDS = {0: 34.0, 1:  34.0, 2:  34.0, 3: 34.0, 4: 34.0}
+TAG_DICT = {-1: 'STOP', 0: 'DEAD_END', 1: 'TURN_LEFT', 2: 'TURN_RIGHT', 4: 'FORWARD'}
+TURN_DURATION = 6 # minus initial wait duration, minus WAIT_DURATION
+TURN_INITIAL_WAIT_DURATION=1.0
+PROCEED_CORRECTION_DURATION=0.0
+PROCEED_STRAIGHT_DURATION=2.2
+WAIT_DURATION=3.0
+DEBUG_VISUALS = False
+DEBUG = True
+
 
 #9865, over rides only if needed, ie. TX2..
 PCA9685_I2C_ADDR = 0x40     #I2C address, use i2cdetect to validate this number
@@ -71,28 +122,6 @@ SSD1306_RESOLUTION = 1 # 1 = 128x32; 2 = 128x64
 # (deprecated) "PIGPIO_PWM" uses Raspberrys internal PWM
 # (deprecated) "I2C_SERVO" uses PCA9685 servo controller to control a steering servo and an ESC, as in a standard RC car
 #
-DRIVE_TRAIN_TYPE = "PWM_STEERING_THROTTLE"
-
-#
-# PWM_STEERING_THROTTLE
-#
-# Drive train for RC car with a steering servo and ESC.
-# Uses a PwmPin for steering (servo) and a second PwmPin for throttle (ESC)
-# Base PWM Frequence is presumed to be 60hz; use PWM_xxxx_SCALE to adjust pulse with for non-standard PWM frequencies
-#
-PWM_STEERING_THROTTLE = {
-    "PWM_STEERING_PIN": "PCA9685.1:40.1",   # PWM output pin for steering servo
-    "PWM_STEERING_SCALE": 1.0,              # used to compensate for PWM frequency differents from 60hz; NOT for adjusting steering range
-    "PWM_STEERING_INVERTED": False,         # True if hardware requires an inverted PWM pulse
-    "PWM_THROTTLE_PIN": "PCA9685.1:40.0",   # PWM output pin for ESC
-    "PWM_THROTTLE_SCALE": 1.0,              # used to compensate for PWM frequence differences from 60hz; NOT for increasing/limiting speed
-    "PWM_THROTTLE_INVERTED": False,         # True if hardware requires an inverted PWM pulse
-    "STEERING_LEFT_PWM": 460,               #pwm value for full left steering
-    "STEERING_RIGHT_PWM": 290,              #pwm value for full right steering
-    "THROTTLE_FORWARD_PWM": 500,            #pwm value for max forward throttle
-    "THROTTLE_STOPPED_PWM": 370,            #pwm value for no movement
-    "THROTTLE_REVERSE_PWM": 220,            #pwm value for max reverse throttle
-}
 
 #
 # I2C_SERVO (deprecated in favor of PWM_STEERING_THROTTLE)
@@ -561,9 +590,9 @@ WEB_INIT_MODE = "user"              # which control mode to start in. one of use
 
 #JOYSTICK
 USE_JOYSTICK_AS_DEFAULT = False      #when starting the manage.py, when True, will not require a --js option to use the joystick
-JOYSTICK_MAX_THROTTLE = 0.5         #this scalar is multiplied with the -1 to 1 throttle value to limit the maximum throttle. This can help if you drop the controller or just don't need the full speed available.
+JOYSTICK_MAX_THROTTLE = 0.20         #this scalar is multiplied with the -1 to 1 throttle value to limit the maximum throttle. This can help if you drop the controller or just don't need the full speed available.
 JOYSTICK_STEERING_SCALE = 1.0       #some people want a steering that is less sensitve. This scalar is multiplied with the steering -1 to 1. It can be negative to reverse dir.
-AUTO_RECORD_ON_THROTTLE = True      #if true, we will record whenever throttle is not zero. if false, you must manually toggle recording with some other trigger. Usually circle button on joystick.
+AUTO_RECORD_ON_THROTTLE = False      #if true, we will record whenever throttle is not zero. if false, you must manually toggle recording with some other trigger. Usually circle button on joystick.
 CONTROLLER_TYPE = 'xbox'            #(ps3|ps4|xbox|pigpio_rc|nimbus|wiiu|F710|rc3|MM1|custom) custom will run the my_joystick.py controller written by the `donkey createjs` command
 USE_NETWORKED_JS = False            #should we listen for remote joystick control over the network?
 NETWORK_JS_SERVER_IP = None         #when listening for network joystick control, which ip is serving this information
@@ -642,7 +671,7 @@ HAVE_PERFMON = False
 
 #RECORD OPTIONS
 RECORD_DURING_AI = False        #normally we do not record during ai mode. Set this to true to get image and steering records for your Ai. Be careful not to use them to train.
-AUTO_CREATE_NEW_TUB = False     #create a new tub (tub_YY_MM_DD) directory when recording or append records to data directory directly
+AUTO_CREATE_NEW_TUB = True     #create a new tub (tub_YY_MM_DD) directory when recording or append records to data directory directly
 
 #LED
 HAVE_RGB_LED = False            #do you have an RGB LED like https://www.amazon.com/dp/B07BNRZWNF
@@ -758,31 +787,15 @@ STOP_SIGN_MAX_REVERSE_COUNT = 10    # How many times should the car reverse when
 STOP_SIGN_REVERSE_THROTTLE = -0.5     # Throttle during reversing when detected a stop sign
 
 # FPS counter
-SHOW_FPS = False
-FPS_DEBUG_INTERVAL = 10    # the interval in seconds for printing the frequency info into the shell
+SHOW_FPS = True
+FPS_DEBUG_INTERVAL = 5    # the interval in seconds for printing the frequency info into the shell
 
 # PI connection
 PI_USERNAME = "pi"
 PI_HOSTNAME = "donkeypi.local"
 
-#FIRA Engine
-FIRA_ENGINE = False
-APRILTAG_HZ = 15
-ZEBRA_HZ = 15
-STOP_DURATION = 5
-TOP_CROP_RATIO = 0.0  # Realsense cropping ratio, 0.0 is no cropping, 1.0 is no picture
-PROXIMITY_THRESHOLDS = {0: 34.0, 1:  34.0, 2:  34.0, 3: 34.0, 4: 34.0}
-TAG_DICT = {-1: 'STOP', 0: 'DEAD_END', 1: 'TURN_LEFT', 2: 'TURN_RIGHT', 4: 'FORWARD'}
-TURN_DURATION = 6 # minus initial wait duration, minus WAIT_DURATION
-TURN_INITIAL_WAIT_DURATION=1.0
-PROCEED_CORRECTION_DURATION=0.0
-PROCEED_STRAIGHT_DURATION=2.2
-WAIT_DURATION=3.0
-DEBUG_VISUALS = False
-DEBUG = True
-
 #FIRA Engine YOLO
-FIRA_ENGINE_YOLO = True
+FIRA_ENGINE_YOLO = False
 FIRA_MODEL_NAME = 'yolov8-trained.pt'
 FIRA_YOLO_HZ = 15
 FIRA_YOLO_CLASSES = ['End', 'Forward', 'Left', 'No_entry', 'Right', 'Stop']

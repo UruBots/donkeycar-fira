@@ -453,6 +453,28 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
         run_condition="run_pilot")
         
+
+# FIRA Modular Engine
+    if cfg.FIRA_MODULAR:
+        from donkeycar.parts.fira_modular import FiraModular
+
+        V.add(FiraModular(
+            tag_dict=cfg.FIRA_TAG_DICT,
+            proximity_thresholds=cfg.FIRA_PROXIMITY_THRESHOLDS,
+            camera_to_front=cfg.FIRA_CAMERA_TO_FRONT,
+            vehicle_width=cfg.FIRA_VEHICLE_WIDTH,
+            vehicle_length=cfg.FIRA_VEHICLE_LENGTH,
+            use_route_plan=cfg.FIRA_USE_ROUTE_PLAN,
+            route_plan=cfg.FIRA_ROUTE_PLAN,
+            debug=cfg.FIRA_DEBUG,
+            require_zebra=cfg.FIRA_REQUIRE_ZEBRA  # <- nuevo parámetro
+        ),
+        inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        run_condition='run_pilot')
+
+
+
     #FIRA YOLO Engine
     if cfg.FIRA_ENGINE_YOLO:
         from donkeycar.parts.fira_signals_engine.fira_engine_yolo \
