@@ -454,7 +454,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         run_condition="run_pilot")
         
 
-# FIRA Modular Engine
+    # FIRA Modular Engine
     if cfg.FIRA_MODULAR:
         from donkeycar.parts.fira_modular import FiraModular
 
@@ -467,11 +467,12 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             use_route_plan=cfg.FIRA_USE_ROUTE_PLAN,
             route_plan=cfg.FIRA_ROUTE_PLAN,
             debug=cfg.FIRA_DEBUG,
-            require_zebra=cfg.FIRA_REQUIRE_ZEBRA  # <- nuevo parámetro
+            require_zebra=cfg.FIRA_REQUIRE_ZEBRA,  
         ),
         inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
         outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
         run_condition='run_pilot')
+
 
 
 
@@ -920,64 +921,84 @@ def get_camera(cfg):
     return cam
 
 
-def add_camera(V, cfg, camera_type):
-    """
-    Add the configured camera to the vehicle pipeline.
+    def add_camera(V, cfg, camera_type):
+        """
+        Add the configured camera to the vehicle pipeline.
 
-    :param V: the vehicle pipeline.
-              On output this will be modified.
-    :param cfg: the configuration (from myconfig.py)
-    """
-    logger.info("cfg.CAMERA_TYPE %s"%cfg.CAMERA_TYPE)
-    if camera_type == "stereo":
-        if cfg.CAMERA_TYPE == "WEBCAM":
-            from donkeycar.parts.camera import Webcam
+        :param V: the vehicle pipeline.
+        :param cfg: the configuration (from myconfig.py)
+        """
+        logger.info("cfg.CAMERA_TYPE %s" % cfg.CAMERA_TYPE)
 
-            camA = Webcam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, iCam = 0)
-            camB = Webcam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, iCam = 1)
+        if camera_type == "stereo":
+            if cfg.CAMERA_TYPE == "WEBCAM":
+                from donkeycar.parts.camera import Webcam
+                camA = Webcam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, camera_index=0)
+                camB = Webcam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, camera_index=1)
 
-        elif cfg.CAMERA_TYPE == "CVCAM":
-            from donkeycar.parts.cv import CvCam
+            elif cfg.CAMERA_TYPE == "CVCAM":
+                from donkeycar.parts.cv import CvCam
+                camA = CvCam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, camera_index=0)
+                camB = CvCam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, camera_index=1)
 
-            camA = CvCam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, iCam = 0)
-            camB = CvCam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, iCam = 1)
-        else:
-            raise(Exception("Unsupported camera type: %s" % cfg.CAMERA_TYPE))
+            else:
+                raise Exception("Unsupported camera type for stereo: %s" % cfg.CAMERA_TYPE)
 
-        V.add(camA, outputs=['cam/image_array_a'], threaded=True)
-        V.add(camB, outputs=['cam/image_array_b'], threaded=True)
+            V.add(camA, outputs=['cam/image_array_a'], threaded=True)
+            V.add(camB, outputs=['cam/image_array_b'], threaded=True)
 
-        from donkeycar.parts.image import StereoPair
+            from donkeycar.parts.image import StereoPair
+            V.add(StereoPair(), inputs=['cam/image_array_a', 'cam/image_array_b'], outputs=['cam/image_array'])
 
-        V.add(StereoPair(), inputs=['cam/image_array_a', 'cam/image_array_b'],
-            outputs=['cam/image_array'])
-        if cfg.BGR2RGB:
-            from donkeycar.parts.cv import ImgBGR2RGB
-            V.add(ImgBGR2RGB(), inputs=["cam/image_array_a"], outputs=["cam/image_array_a"])
-            V.add(ImgBGR2RGB(), inputs=["cam/image_array_b"], outputs=["cam/image_array_b"])
+            if cfg.BGR2RGB:
+                from donkeycar.parts.cv import ImgBGR2RGB
+                V.add(ImgBGR2RGB(), inputs=["cam/image_array"], outputs=["cam/image_array"])
 
-    elif cfg.CAMERA_TYPE == "D435":
-        from donkeycar.parts.realsense435i import RealSense435i
-        cam = RealSense435i(
-            enable_rgb=cfg.REALSENSE_D435_RGB,
-            enable_depth=cfg.REALSENSE_D435_DEPTH,
-            enable_imu=cfg.REALSENSE_D435_IMU,
-            device_id=cfg.REALSENSE_D435_ID)
-        V.add(cam, inputs=[],
-              outputs=['cam/image_array', 'cam/depth_array',
-                       'imu/acl_x', 'imu/acl_y', 'imu/acl_z',
-                       'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z'],
-              threaded=True)
-    else:
-        inputs = []
-        outputs = ['cam/image_array']
-        threaded = True
-        cam = get_camera(cfg)
-        if cam:
-            V.add(cam, inputs=inputs, outputs=outputs, threaded=threaded)
-        if cfg.BGR2RGB:
-            from donkeycar.parts.cv import ImgBGR2RGB
-            V.add(ImgBGR2RGB(), inputs=["cam/image_array"], outputs=["cam/image_array"])
+        elif cfg.CAMERA_TYPE == "D435":
+            from donkeycar.parts.realsense435i import RealSense435i
+            cam = RealSense435i(
+                enable_rgb=cfg.REALSENSE_D435_RGB,
+                enable_depth=cfg.REALSENSE_D435_DEPTH,
+                enable_imu=cfg.REALSENSE_D435_IMU,
+                device_id=cfg.REALSENSE_D435_ID)
+            V.add(cam, inputs=[],
+                outputs=['cam/image_array', 'cam/depth_array',
+                        'imu/acl_x', 'imu/acl_y', 'imu/acl_z',
+                        'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z'],
+                threaded=True)
+
+    # URUBOTS autonomous cars - camera implementation    
+        elif camera_type == "multi_camera":
+            inputs = []
+            outputs = ['cam/image_array', 'cam/image_array_1']
+            threaded = True
+            cam1 = get_camera(cfg)
+            cam2 = get_camera(cfg)
+            if cam1:
+                V.add(cam1, inputs=inputs, outputs=['cam/image_array'], threaded=threaded)
+            if cam2:
+                V.add(cam2, inputs=inputs, outputs=['cam/image_array_1'], threaded=threaded)
+
+
+        else:  # single camera
+            if cfg.CAMERA_TYPE == "WEBCAM":
+                from donkeycar.parts.camera import Webcam
+                cam = Webcam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, camera_index=cfg.CAMERA_INDEX)
+
+            elif cfg.CAMERA_TYPE == "CVCAM":
+                from donkeycar.parts.cv import CvCam
+                cam = CvCam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, camera_index=cfg.CAMERA_INDEX)
+
+            else:
+                raise Exception("Unsupported camera type: %s" % cfg.CAMERA_TYPE)
+
+            V.add(cam, outputs=['cam/image_array'], threaded=True)
+
+            if cfg.BGR2RGB:
+                from donkeycar.parts.cv import ImgBGR2RGB
+                V.add(ImgBGR2RGB(), inputs=["cam/image_array"], outputs=["cam/image_array"])
+
+
 
 
 def add_odometry(V, cfg, threaded=True):

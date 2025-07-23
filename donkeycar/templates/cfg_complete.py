@@ -14,19 +14,21 @@ FIRA_TAG_DICT = {
     5: 'TURN_LEFT'
 }
 
+AI_THROTTLE_MULT = 1.15    
 
 FIRA_PROXIMITY_THRESHOLDS = {
-    0: 14.0,
-    1: 14.0,
-    2: 14.0,
-    3: 14.0,
-    4: 14.0,
-    5: 14.0
+    0: 15.0,
+    1: 15.0,
+    2: 15.0,
+    3: 15.0,
+    4: 15.0,
+    5: 15.0
 }
 
-FIRA_CAMERA_TO_FRONT = 0.15
+FIRA_CAMERA_TO_FRONT = 0.10
 FIRA_VEHICLE_WIDTH = 0.12
 FIRA_VEHICLE_LENGTH = 0.25
+
 
 FIRA_USE_ROUTE_PLAN = False
 FIRA_ROUTE_PLAN = ['FORWARD', 'TURN_RIGHT', 'TURN_LEFT', 'STOP']
@@ -38,7 +40,7 @@ FIRA_REQUIRE_ZEBRA = False
 # Activar para enviar la configuración personalizada de cámara al simulador
 
 #VEHICLE
-DRIVE_LOOP_HZ = 24      # the vehicle loop will pause if faster than this speed.
+DRIVE_LOOP_HZ = 20      # the vehicle loop will pause if faster than this speed.
 MAX_LOOPS = None        # the vehicle loop can abort after this many iterations, when given a positive integer.
 
 #CAMERA
@@ -68,9 +70,9 @@ PWM_STEERING_THROTTLE = {
     "PWM_THROTTLE_INVERTED": False,         # True if hardware requires an inverted PWM pulse
     "STEERING_LEFT_PWM": 420,               #pwm value for full left steering
     "STEERING_RIGHT_PWM": 210,              #pwm value for full right steering
-    "THROTTLE_FORWARD_PWM": 505,            #pwm value for max forward throttle
+    "THROTTLE_FORWARD_PWM": 510,            #pwm value for max forward throttle
     "THROTTLE_STOPPED_PWM": 370,            #pwm value for no movement
-    "THROTTLE_REVERSE_PWM": 220,            #pwm value for max reverse throttle
+    "THROTTLE_REVERSE_PWM": 225,            #pwm value for max reverse throttle
 }
 
 
@@ -399,7 +401,7 @@ DEFAULT_AI_FRAMEWORK = 'tensorflow'
 DEFAULT_MODEL_TYPE = 'linear'
 BATCH_SIZE = 128                #how many records to use when doing one pass of gradient decent. Use a smaller number if your gpu is running out of memory.
 TRAIN_TEST_SPLIT = 0.8          #what percent of records to use for training. the remaining used for validation.
-MAX_EPOCHS = 100                #how many times to visit all records of your data
+MAX_EPOCHS = 60                #how many times to visit all records of your data
 SHOW_PLOT = True                #would you like to see a pop up display of final loss?
 VERBOSE_TRAIN = True            #would you like to see a progress bar with text during training?
 USE_EARLY_STOP = True           #would you like to stop the training if we see it's not improving fit?
@@ -410,7 +412,7 @@ OPTIMIZER = None                #adam, sgd, rmsprop, etc.. None accepts default
 LEARNING_RATE = 0.001           #only used when OPTIMIZER specified
 LEARNING_RATE_DECAY = 0.0       #only used when OPTIMIZER specified
 SEND_BEST_MODEL_TO_PI = False   #change to true to automatically send best model during training
-CREATE_TF_LITE = True           # automatically create tflite model in training
+CREATE_TF_LITE = False          # automatically create tflite model in training
 CREATE_TENSOR_RT = False        # automatically create tensorrt model in training
 SAVE_MODEL_AS_H5 = False        # if old keras format should be used instead of savedmodel
 CACHE_POLICY = 'ARRAY'          # if images are cached as array in training other options are 'NOCACHE' and 'BINARY'
@@ -521,8 +523,7 @@ POST_TRANSFORMATIONS = []  # transformations applied _after_ training augmentati
 # Settings for brightness and blur, use 'MULTIPLY' and/or 'BLUR' in
 # AUGMENTATIONS
 AUG_BRIGHTNESS_RANGE = 0.2  # this is interpreted as [-0.2, 0.2]
-AUG_BLUR_RANGE = (0, 3)
-
+#AUG_BLUR_RANGE = (1, 3)
 # "CROP" Transformation
 # Apply mask to borders of the image
 # defined by a rectangle.
@@ -758,7 +759,7 @@ AI_LAUNCH_ENABLE_BUTTON = 'R2'      # this keypress will enable this boost. It m
 AI_LAUNCH_KEEP_ENABLED = False      # when False ( default) you will need to hit the AI_LAUNCH_ENABLE_BUTTON for each use. This is safest. When this True, is active on each trip into "local" ai mode.
 
 #Scale the output of the throttle of the ai pilot for all model types.
-AI_THROTTLE_MULT = 1.0              # this multiplier will scale every throttle value for all output from NN models
+        # this multiplier will scale every throttle value for all output from NN models
 
 #Path following
 PATH_FILENAME = "donkey_path.pkl"   # the path will be saved to this filename
@@ -774,8 +775,8 @@ SAVE_PATH_BTN = "cross"             # joystick button to save path
 RESET_ORIGIN_BTN = "triangle"       # joystick button to press to move car back to origin
 
 # Intel Realsense D435 and D435i depth sensing camera
-REALSENSE_D435_RGB = True       # True to capture RGB image
-REALSENSE_D435_DEPTH = True     # True to capture depth as image array
+REALSENSE_D435_RGB = False       # True to capture RGB image
+REALSENSE_D435_DEPTH = False     # True to capture depth as image array
 REALSENSE_D435_IMU = False      # True to capture IMU data (D435i only)
 REALSENSE_D435_ID = None        # serial number of camera or None if you only have one camera (it will autodetect)
 
@@ -788,7 +789,7 @@ STOP_SIGN_REVERSE_THROTTLE = -0.5     # Throttle during reversing when detected 
 
 # FPS counter
 SHOW_FPS = True
-FPS_DEBUG_INTERVAL = 5    # the interval in seconds for printing the frequency info into the shell
+FPS_DEBUG_INTERVAL = 4   # the interval in seconds for printing the frequency info into the shell
 
 # PI connection
 PI_USERNAME = "pi"
