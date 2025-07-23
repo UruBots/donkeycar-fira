@@ -65,10 +65,8 @@ class FiraModular:
         self.last_tag_detected = None
         self.current_visible_tag_id = None
 
-
         self.tag_detector = apriltag.Detector()
-
-        self.cam2 = cv2.VideoCapture(2)
+        #self.cam2 = cv2.VideoCapture(2)
 
         #self.latest_img = None
         #self.tag_detection_lock = threading.Lock()
@@ -117,7 +115,7 @@ class FiraModular:
 
         #threading.Thread(target=self.tag_detection_loop, daemon=True).start()
 
-    def run(self, angle_model, throttle_model, img_arr):
+    def run(self, angle_model, throttle_model, img_arr, image_array_1): 
         current_time = time.time()
         original_img = img_arr.copy()
         rescaled_img = cv2.resize(img_arr, (320, 240), interpolation=cv2.INTER_LINEAR)
