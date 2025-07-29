@@ -14,34 +14,47 @@ FIRA_TAG_DICT = {
     5: 'TURN_LEFT'
 }
 
-AI_THROTTLE_MULT = 1.15    
+AI_THROTTLE_MULT = 1.2    
 
 FIRA_PROXIMITY_THRESHOLDS = {
-    0: 15.0,
-    1: 15.0,
-    2: 15.0,
-    3: 15.0,
-    4: 15.0,
-    5: 15.0
+    0: 10.0,
+    1: 10.0,
+    2: 10.0,
+    3: 10.0,
+    4: 10.0,
+    5: 10.0
 }
+
+FIRA_MODULAR = True
+FIRA_USE_ROUTE_PLAN = False
+FIRA_ROUTE_PLAN = ['FORWARD', 'TURN_RIGHT', 'TURN_LEFT', 'STOP']
+FIRA_DEBUG = True
+
+FIRA_REQUIRE_ZEBRA = True   #ZEBRA 
+FIRA_ZEBRA_DETECTION_HZ = 1  # dos veces por segundo
+
+FIRA_TAG_DETECTION_HZ = 0.2  # Detectar tags 2 veces por segundo
+FIRA_EJECUTAR_AL_DEJAR_VER_TAG = False
+
+FIRA_USAR_UNA_SOLA_CAMARA = True #UNA SOLA CAMARA O 2
 
 FIRA_CAMERA_TO_FRONT = 0.10
 FIRA_VEHICLE_WIDTH = 0.12
 FIRA_VEHICLE_LENGTH = 0.25
-
-
-FIRA_USE_ROUTE_PLAN = False
-FIRA_ROUTE_PLAN = ['FORWARD', 'TURN_RIGHT', 'TURN_LEFT', 'STOP']
-FIRA_DEBUG = True
-FIRA_MODULAR = True
-FIRA_REQUIRE_ZEBRA = False
 # For IMAGE_LIST camera
 # PATH_MASK = "~/mycar/data/tub_1_20-03-12/*.jpg"
 # Activar para enviar la configuración personalizada de cámara al simulador
 
 #VEHICLE
-DRIVE_LOOP_HZ = 20      # the vehicle loop will pause if faster than this speed.
+DRIVE_LOOP_HZ = 24      # the vehicle loop will pause if faster than this speed.
 MAX_LOOPS = None        # the vehicle loop can abort after this many iterations, when given a positive integer.
+
+#When racing, to give the ai a boost, configure these values.
+AI_LAUNCH_DURATION = 0.0            # the ai will output throttle for this many seconds
+AI_LAUNCH_THROTTLE = 0.0            # the ai will output this throttle value
+AI_LAUNCH_ENABLE_BUTTON = 'R2'      # this keypress will enable this boost. It must be enabled before each use to prevent accidental trigger.
+AI_LAUNCH_KEEP_ENABLED = False      # when False ( default) you will need to hit the AI_LAUNCH_ENABLE_BUTTON for each use. This is safest. When this True, is active on each trip into "local" ai mode.
+
 
 #CAMERA
 CAMERA_TYPE = "WEBCAM"   # (PICAM|WEBCAM|CVCAM|CSIC|V4L|D435|MOCK|IMAGE_LIST)
@@ -51,11 +64,24 @@ IMAGE_DEPTH = 3         # default RGB=3, make 1 for mono
 CAMERA_FRAMERATE = DRIVE_LOOP_HZ
 CAMERA_VFLIP = False
 CAMERA_HFLIP = False
-CAMERA_INDEX = 0  # used for 'WEBCAM' and 'CVCAM' when there is more than one camera connected 
+CAMERA_INDEX = 0 # used for 'WEBCAM' and 'CVCAM' when there is more than one camera connected 
 # For CSIC camera - If the camera is mounted in a rotated position, changing the below parameter will correct the output frame orientation
 CSIC_CAM_GSTREAMER_FLIP_PARM = 0 # (0 => none , 4 => Flip horizontally, 6 => Flip vertically)
 BGR2RGB = False  # true to convert from BRG format to RGB format; requires opencv
 SHOW_PILOT_IMAGE = False  # show the image used to do the inference when in autopilot mode
+
+#Path following
+PATH_FILENAME = "donkey_path.pkl"   # the path will be saved to this filename
+PATH_SCALE = 5.0                    # the path display will be scaled by this factor in the web page
+PATH_OFFSET = (0, 0)                # 255, 255 is the center of the map. This offset controls where the origin is displayed.
+PATH_MIN_DIST = 0.3                 # after travelling this distance (m), save a path point
+PID_P = -10.0                       # proportional mult for PID path follower
+PID_I = 0.000                       #    integral mult for PID path follower
+PID_D = -0.2                        # differential mult for PID path follower
+PID_THROTTLE = 0.2                  # constant throttle value during path following
+USE_CONSTANT_THROTTLE = False       # whether or not to use the constant throttle or variable throttle captured during path recording
+SAVE_PATH_BTN = "cross"             # joystick button to save path
+RESET_ORIGIN_BTN = "triangle"       # joystick button to press to move car back to origin
 
 
 DRIVE_TRAIN_TYPE = "PWM_STEERING_THROTTLE"
@@ -65,11 +91,11 @@ PWM_STEERING_THROTTLE = {
     "PWM_STEERING_PIN": "PCA9685.1:40.14",   # PWM output pin for steering servo
     "PWM_STEERING_SCALE": 1.0,              # used to compensate for PWM frequency differents from 60hz; NOT for adjusting steering range
     "PWM_STEERING_INVERTED": False,         # True if hardware requires an inverted PWM pulse
-    "PWM_THROTTLE_PIN": "PCA9685.1:40.10",   # PWM output pin for ESC
+    "PWM_THROTTLE_PIN": "PCA9685.1:40.13",   # PWM output pin for ESC
     "PWM_THROTTLE_SCALE": 1.0,              # used to compensate for PWM frequence differences from 60hz; NOT for increasing/limiting speed
     "PWM_THROTTLE_INVERTED": False,         # True if hardware requires an inverted PWM pulse
-    "STEERING_LEFT_PWM": 420,               #pwm value for full left steering
-    "STEERING_RIGHT_PWM": 210,              #pwm value for full right steering
+    "STEERING_LEFT_PWM": 455,               #pwm value for full left steering
+    "STEERING_RIGHT_PWM": 265,              #pwm value for full right steering
     "THROTTLE_FORWARD_PWM": 510,            #pwm value for max forward throttle
     "THROTTLE_STOPPED_PWM": 370,            #pwm value for no movement
     "THROTTLE_REVERSE_PWM": 225,            #pwm value for max reverse throttle
@@ -605,7 +631,7 @@ JOYSTICK_DEVICE_FILE = "/dev/input/js0" # this is the unix file use to access th
 #For the categorical model, this limits the upper bound of the learned throttle
 #it's very IMPORTANT that this value is matched from the training PC config.py and the robot.py
 #and ideally wouldn't change once set.
-MODEL_CATEGORICAL_MAX_THROTTLE_RANGE = 0.8
+MODEL_CATEGORICAL_MAX_THROTTLE_RANGE = 0.13
 
 #RNN or 3D
 SEQUENCE_LENGTH = 3             #some models use a number of images over time. This controls how many.
@@ -752,27 +778,11 @@ SIM_RECORD_LIDAR = False
 #This is used to create a tcp service to publish the camera feed
 PUB_CAMERA_IMAGES = False
 
-#When racing, to give the ai a boost, configure these values.
-AI_LAUNCH_DURATION = 0.0            # the ai will output throttle for this many seconds
-AI_LAUNCH_THROTTLE = 0.0            # the ai will output this throttle value
-AI_LAUNCH_ENABLE_BUTTON = 'R2'      # this keypress will enable this boost. It must be enabled before each use to prevent accidental trigger.
-AI_LAUNCH_KEEP_ENABLED = False      # when False ( default) you will need to hit the AI_LAUNCH_ENABLE_BUTTON for each use. This is safest. When this True, is active on each trip into "local" ai mode.
 
 #Scale the output of the throttle of the ai pilot for all model types.
         # this multiplier will scale every throttle value for all output from NN models
 
-#Path following
-PATH_FILENAME = "donkey_path.pkl"   # the path will be saved to this filename
-PATH_SCALE = 5.0                    # the path display will be scaled by this factor in the web page
-PATH_OFFSET = (0, 0)                # 255, 255 is the center of the map. This offset controls where the origin is displayed.
-PATH_MIN_DIST = 0.3                 # after travelling this distance (m), save a path point
-PID_P = -10.0                       # proportional mult for PID path follower
-PID_I = 0.000                       # integral mult for PID path follower
-PID_D = -0.2                        # differential mult for PID path follower
-PID_THROTTLE = 0.2                  # constant throttle value during path following
-USE_CONSTANT_THROTTLE = False       # whether or not to use the constant throttle or variable throttle captured during path recording
-SAVE_PATH_BTN = "cross"             # joystick button to save path
-RESET_ORIGIN_BTN = "triangle"       # joystick button to press to move car back to origin
+
 
 # Intel Realsense D435 and D435i depth sensing camera
 REALSENSE_D435_RGB = False       # True to capture RGB image
@@ -789,7 +799,7 @@ STOP_SIGN_REVERSE_THROTTLE = -0.5     # Throttle during reversing when detected 
 
 # FPS counter
 SHOW_FPS = True
-FPS_DEBUG_INTERVAL = 4   # the interval in seconds for printing the frequency info into the shell
+FPS_DEBUG_INTERVAL = 2   # the interval in seconds for printing the frequency info into the shell
 
 # PI connection
 PI_USERNAME = "pi"

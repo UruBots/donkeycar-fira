@@ -30,7 +30,7 @@ MAX_LOOPS = None        # the vehicle loop can abort after this many iterations,
 #
 # CAMERA configuration
 #
-CAMERA_TYPE = "PICAM"   # (PICAM|WEBCAM|CVCAM|CSIC|V4L|D435|MOCK|IMAGE_LIST)
+CAMERA_TYPE = "CVCAM"   # (PICAM|WEBCAM|CVCAM|CSIC|V4L|D435|MOCK|IMAGE_LIST)
 IMAGE_W = 320
 IMAGE_H = 240
 IMAGE_DEPTH = 3         # default RGB=3, make 1 for mono
@@ -363,7 +363,7 @@ WEB_INIT_MODE = "user"              # which control mode to start in. one of use
 
 #JOYSTICK
 USE_JOYSTICK_AS_DEFAULT = False      #when starting the manage.py, when True, will not require a --js option to use the joystick
-JOYSTICK_MAX_THROTTLE = 0.5         #this scalar is multiplied with the -1 to 1 throttle value to limit the maximum throttle. This can help if you drop the controller or just don't need the full speed available.
+JOYSTICK_MAX_THROTTLE = 0.2         #this scalar is multiplied with the -1 to 1 throttle value to limit the maximum throttle. This can help if you drop the controller or just don't need the full speed available.
 JOYSTICK_STEERING_SCALE = 1.0       #some people want a steering that is less sensitve. This scalar is multiplied with the steering -1 to 1. It can be negative to reverse dir.
 AUTO_RECORD_ON_THROTTLE = False     #if true, we will record whenever throttle is not zero. if false, you must manually toggle recording with some other trigger. Usually circle button on joystick.
 CONTROLLER_TYPE = 'xbox'            #(ps3|ps4|xbox|pigpio_rc|nimbus|wiiu|F710|rc3|MM1|custom) custom will run the my_joystick.py controller written by the `donkey createjs` command
@@ -490,13 +490,34 @@ MODEL_RELOADED_LED_B = 0
 # This enables that, and sets the path to the simualator and the environment.
 # You will want to download the simulator binary from: https://github.com/tawnkramer/donkey_gym/releases/download/v18.9/DonkeySimLinux.zip
 # then extract that and modify DONKEY_SIM_PATH.
-DONKEY_GYM = False
-DONKEY_SIM_PATH = "path to sim" #"/home/tkramer/projects/sdsandbox/sdsim/build/DonkeySimLinux/donkey_sim.x86_64" when racing on virtual-race-league use "remote", or user "remote" when you want to start the sim manually first.
+DONKEY_GYM = True
+DONKEY_SIM_PATH = "remote" #"/home/tkramer/projects/sdsandbox/sdsim/build/DonkeySimLinux/donkey_sim.x86_64" when racing on virtual-race-league use "remote", or user "remote" when you want to start the sim manually first.
 DONKEY_GYM_ENV_NAME = "donkey-generated-track-v0" # ("donkey-generated-track-v0"|"donkey-generated-roads-v0"|"donkey-warehouse-v0"|"donkey-avc-sparkfun-v0")
-GYM_CONF = { "body_style" : "donkey", "body_rgb" : (128, 128, 128), "car_name" : "car", "font_size" : 100} # body style(donkey|bare|car01) body rgb 0-255
-GYM_CONF["racer_name"] = "Your Name"
-GYM_CONF["country"] = "Place"
-GYM_CONF["bio"] = "I race robots."
+
+GYM_CONF = {
+    "body_style": "donkey",
+    "body_rgb": (128, 128, 128),
+    "car_name": "car",
+    "font_size": 20,
+    "racer_name": "Pablo",
+    "country": "Uruguay",
+    "bio": "I race robots.",
+    "cam_config": {
+        "fov": 75,
+        "fish_eye_x": 0.0,
+        "fish_eye_y": 0.0,
+        "img_w": 320,
+        "img_h": 240,
+        "img_d": 3,
+        "img_enc": "PNG",
+        "offset_x": 0.0,
+        "offset_y": 1,
+        "offset_z": 0.70,
+        "rot_x": 40,
+        "rot_y": 0,
+        "rot_z": 0.0
+    }
+}
 
 SIM_HOST = "127.0.0.1"              # when racing on virtual-race-league use host "trainmydonkey.com"
 SIM_ARTIFICIAL_LATENCY = 0          # this is the millisecond latency in controls. Can use useful in emulating the delay when useing a remote server. values of 100 to 400 probably reasonable.
@@ -560,10 +581,11 @@ CV_CONTROLLER_OUTPUTS = ['pilot/steering', 'pilot/throttle', 'cv/image_array']
 CV_CONTROLLER_CONDITION = "run_pilot"
 
 # LineFollower - line color and detection area
-SCAN_Y = 100          # num pixels from the top to start horiz scan
-SCAN_HEIGHT = 20      # num pixels high to grab from horiz scan
-COLOR_THRESHOLD_LOW  = (0, 50, 50)    # HSV dark yellow (opencv HSV hue value is 0..179, saturation and value are both 0..255)
-COLOR_THRESHOLD_HIGH = (50, 255, 255) # HSV light yellow (opencv HSV hue value is 0..179, saturation and value are both 0..255)
+SCAN_Y = 50          # num pixels from the top to start horiz scan
+SCAN_HEIGHT = 5      # num pixels high to grab from horiz scan
+COLOR_THRESHOLD_LOW  = (0, 0, 220)    # Muy blanco
+COLOR_THRESHOLD_HIGH = (180, 30, 255) # Saturación baja (evita colores), valor muy alto
+# HSV light yellow (opencv HSV hue value is 0..179, saturation and value are both 0..255)
 
 # LineFollower - target (expected) line position and detection thresholds
 TARGET_PIXEL = None   # In not None, then this is the expected horizontal position in pixels of the yellow line.
@@ -573,18 +595,18 @@ TARGET_PIXEL = None   # In not None, then this is the expected horizontal positi
 TARGET_THRESHOLD = 10 # number of pixels from TARGET_PIXEL that vehicle must be pointing
                       # before a steering change will be made; this prevents algorithm
                       # from being too twitchy when it is on or near the line.
-CONFIDENCE_THRESHOLD = 0.0015   # The fraction of total sampled pixels that must be yellow in the sample slice.
+CONFIDENCE_THRESHOLD = 0.005   # The fraction of total sampled pixels that must be yellow in the sample slice.
                                 # The sample slice will have SCAN_HEIGHT pixels and the total number
                                 # of sampled pixels is IMAGE_W x SCAN_HEIGHT, so if you want to make sure
                                 # that all the pixels in the sample slice are yellow, then the confidence
                                 # threshold should be SCAN_HEIGHT / (IMAGE_W x SCAN_HEIGHT) or (1 / IMAGE_W).
                                 # if you want half of the pixels in the slice to match hten (1 / IMAGE_W) / 2.
-                                # If you keep getting `No line detected` logs in the console then you
+                        # If you keep getting `No line detected` logs in the console then you
                                 # may want to lower the threshold.
 
 # LineFollower - throttle step controller; increase throttle on straights, descrease on turns
-THROTTLE_MAX = 0.3    # maximum throttle value the controller will produce
-THROTTLE_MIN = 0.15   # minimum throttle value the controller will produce
+THROTTLE_MAX = 0.15    # maximum throttle value the controller will produce
+THROTTLE_MIN = 0.10   # minimum throttle value the controller will produce
 THROTTLE_INITIAL = THROTTLE_MIN  # initial throttle value
 THROTTLE_STEP = 0.05  # how much to change throttle when off the line
 
@@ -612,4 +634,3 @@ INC_PID_D_BTN = None            # button to change PID 'D' constant by PID_D_DEL
 DEC_PID_D_BTN = None            # button to change PID 'D' constant by -PID_D_DELTA
 INC_PID_P_BTN = "R2"            # button to change PID 'P' constant by PID_P_DELTA
 DEC_PID_P_BTN = "L2"            # button to change PID 'P' constant by -PID_P_DELTA
-

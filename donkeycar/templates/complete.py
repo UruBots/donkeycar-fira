@@ -467,13 +467,17 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             use_route_plan=cfg.FIRA_USE_ROUTE_PLAN,
             route_plan=cfg.FIRA_ROUTE_PLAN,
             debug=cfg.FIRA_DEBUG,
-            require_zebra=cfg.FIRA_REQUIRE_ZEBRA,  
+            require_zebra=cfg.FIRA_REQUIRE_ZEBRA,
+            tag_detection_hz=cfg.FIRA_TAG_DETECTION_HZ,
+            ejecutar_accion_al_dejar_de_ver_tag=cfg.FIRA_EJECUTAR_AL_DEJAR_VER_TAG,
+            usar_una_sola_camara=cfg.FIRA_USAR_UNA_SOLA_CAMARA,
+            zebra_detection_hz=cfg.FIRA_ZEBRA_DETECTION_HZ
         ),
-        inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+        inputs=(['pilot/angle', 'pilot/throttle', 'cam/image_array']
+                if cfg.FIRA_USAR_UNA_SOLA_CAMARA else
+                ['pilot/angle', 'pilot/throttle', 'cam/image_array', 'cam/image_array_1']),
         outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
         run_condition='run_pilot')
-
-
 
 
     #FIRA YOLO Engine
@@ -979,7 +983,7 @@ def add_camera(V, cfg, camera_type):
         threaded = True
 
         cam1 = Webcam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, camera_index = 1)
-        cam2 = Webcam(image_w=640, image_h=480 , image_d=cfg.IMAGE_DEPTH, camera_index = 0)
+        cam2 = Webcam(image_w=160, image_h=120 , image_d=cfg.IMAGE_DEPTH, camera_index = 0)
 
         if cam1:
             V.add(cam1, inputs=inputs, outputs=['cam/image_array'], threaded=threaded)
