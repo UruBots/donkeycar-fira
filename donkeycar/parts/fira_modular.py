@@ -4,6 +4,7 @@ import cv2
 import apriltag
 import threading
 
+# === FUNCIÓN DE DETECCIÓN DE ZEBRA ===
 def detect_crosswalk(img):
     resized = cv2.resize(img, (160, 120))
     gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
@@ -29,15 +30,19 @@ def detect_crosswalk(img):
         if aspect_ratio >= 2 and center_y < 80:
             stripe_count += 1
 
-    zebra_detected = stripe_count >= 3
+    zebra_detected = stripe_count >= 1
     return _, zebra_detected, stripe_count
+
 
 class FiraModular:
     def __init__(self, tag_dict, camera_to_front, vehicle_width, vehicle_length,
-                 use_route_plan=False, route_plan=None, proximity_thresholds=None,
+                 use_route_plan=False, route_plan=None,
                  debug=True, require_zebra=False, tag_detection_hz=0.5,
                  ejecutar_accion_al_dejar_de_ver_tag=False,
-                 usar_una_sola_camara=False, zebra_detection_hz=2.0):
+                 usar_una_sola_camara=False, zebra_detection_hz=2.0,
+                 tag_ratio_threshold=17.0,
+                 reescalar_tag_img=True,
+                 usar_thread_tag=True):
 
         self.tag_dict = tag_dict
         self.camera_to_front = camera_to_front
@@ -45,11 +50,16 @@ class FiraModular:
         self.vehicle_length = vehicle_length
         self.use_route_plan = use_route_plan
         self.route_plan = route_plan or []
-        self.proximity_thresholds = proximity_thresholds or {}
         self.debug = debug
         self.require_zebra = require_zebra
         self.ejecutar_accion_al_dejar_de_ver_tag = ejecutar_accion_al_dejar_de_ver_tag
         self.usar_una_sola_camara = usar_una_sola_camara
+
+        self.tag_ratio_threshold = tag_ratio_threshold
+        self.reescalar_tag_img = reescalar_tag_img
+        self.tag_detection_enabled = True
+        self.zebra_detection_enabled = True
+        self.usar_thread_tag = usar_thread_tag
 
         self.current_step = 0
         self.state = 'conduciendo'
@@ -60,12 +70,9 @@ class FiraModular:
         self.tag_detector = apriltag.Detector()
 
         self.tag_disappear_timeout = 0.3
-        self.tag_cooldown_time = 5.0
         self.last_tag_seen_time = 0.0
         self.last_action_time = 0.0
         self.wait_end_time = 0.0
-
-        self.default_tag_ratio_threshold = 10
 
         self.sequence = []
         self.sequence_index = 0
@@ -84,7 +91,9 @@ class FiraModular:
         self.zebra_detection_interval = 1.0 / zebra_detection_hz
         self.last_zebra_detection_time = 0.0
 
-        if not self.ejecutar_accion_al_dejar_de_ver_tag:
+        self.last_ratio_printed = 0.0
+
+        if self.usar_thread_tag and not self.ejecutar_accion_al_dejar_de_ver_tag:
             threading.Thread(target=self.tag_detection_loop, daemon=True).start()
 
         self.giro_config = {
@@ -94,17 +103,16 @@ class FiraModular:
 
         self.sequences = {
             'corregido_right': [
-                {'duration': 1.0, 'angle': 0, 'throttle': 0.11},
-                {'duration': 1.2, 'angle': 1.0, 'throttle': 0.11},
-                {'duration': 1.4, 'angle': -1, 'throttle': -0.11},
-                {'duration': 1, 'angle': 0.6, 'throttle': 0.11}
+                {'duration': 1.8, 'angle': 0, 'throttle': 0.12},
+                {'duration': 1.7, 'angle': -1.0, 'throttle': -0.13},
+                {'duration': 1.7, 'angle': 1, 'throttle': 0.12},
             ],
             'simple_left': [
-                {'duration': 2, 'angle': 0, 'throttle': 0.10},
-                {'duration': 2.4, 'angle': -1.0, 'throttle': 0.12},
+                {'duration': 2, 'angle': 0, 'throttle': 0.12},
+                {'duration': 2.4, 'angle': -1.0, 'throttle': 0.13},
             ],
             'FORWARD': [
-                {'duration': 1.0, 'angle': 0.0, 'throttle': 0.15},
+                {'duration': 3, 'angle': 0.0, 'throttle': 0.15},
             ],
             'STOP': [
                 {'duration': 2.0, 'angle': 0.0, 'throttle': 0.0},
@@ -119,8 +127,11 @@ class FiraModular:
         self.latest_img = frame_main.copy()
         self.latest_zebra_img = frame_secondary.copy()
 
-        if self.ejecutar_accion_al_dejar_de_ver_tag:
-            tag = self.detect_apriltag(cv2.resize(self.latest_img.copy(), (160, 120)))
+        if self.ejecutar_accion_al_dejar_de_ver_tag or not self.usar_thread_tag:
+            tag_img = self.latest_img.copy()
+            if self.reescalar_tag_img:
+                tag_img = cv2.resize(tag_img, (320, 240))
+            tag = self.detect_apriltag(tag_img)
             if tag:
                 self.last_tag_detected_threaded = tag
 
@@ -150,12 +161,12 @@ class FiraModular:
                 tag_width = tag.corners[2][0] - tag.corners[0][0]
                 if tag_width > 0:
                     ratio = 320 / tag_width
-                    threshold = self.proximity_thresholds.get(tag.tag_id, self.default_tag_ratio_threshold)
-                    if current_time - self.last_debug_print > self.debug_interval:
-                        print(f"[TAG] Visto {tag_name} | Ratio: {ratio:.2f} (umbral: {threshold})")
-                        self.last_debug_print = current_time
+                    if self.debug and abs(ratio - self.last_ratio_printed) > 0.5:
+                        print(f"[TAG] Visto {tag_name} | Ratio: {ratio:.2f} (umbral: {self.tag_ratio_threshold})")
+                        self.last_ratio_printed = ratio
 
-                    if ratio < threshold and not self.ejecutar_accion_al_dejar_de_ver_tag:
+                    if ratio < self.tag_ratio_threshold and not self.ejecutar_accion_al_dejar_de_ver_tag:
+                        self.tag_detection_enabled = False
                         if self.require_zebra:
                             self.state = 'buscando_zebra'
                             print(f"[TAG] Tag {tag_name} aceptado. Buscando zebra...")
@@ -163,6 +174,8 @@ class FiraModular:
                             print(f"[TAG] Umbral alcanzado. Deteniendo por 3s...")
                             self.wait_end_time = current_time + 3.0
                             self.state = 'esperando'
+                    elif ratio >= self.tag_ratio_threshold and self.debug:
+                        print(f"[TAG] {tag_name} ignorado. Ratio ({ratio:.2f}) >= umbral ({self.tag_ratio_threshold})")
 
             if self.ejecutar_accion_al_dejar_de_ver_tag and self.current_visible_tag_id is not None:
                 if current_time - self.last_tag_seen_time > self.tag_disappear_timeout:
@@ -171,6 +184,8 @@ class FiraModular:
                     self.state = 'esperando'
 
         elif self.state == 'buscando_zebra':
+            if not self.zebra_detection_enabled:
+                return angle_model, throttle_model, original_img
             if current_time - self.last_zebra_detection_time > self.zebra_detection_interval:
                 self.last_zebra_detection_time = current_time
                 _, zebra_detected, stripe_count = detect_crosswalk(self.latest_zebra_img)
@@ -190,6 +205,7 @@ class FiraModular:
             self.execute_action_flow(current_time)
 
         elif self.state == 'ejecutando_secuencia':
+            self.zebra_detection_enabled = False
             if self.sequence_index < len(self.sequence):
                 step = self.sequence[self.sequence_index]
                 if current_time - self.sequence_start_time < step['duration']:
@@ -201,6 +217,7 @@ class FiraModular:
             else:
                 self.sequence = []
                 self.last_tag_detected = None
+                self.zebra_detection_enabled = True
                 self.advance_step_or_reset()
 
         return angle_model, throttle_model, original_img
@@ -221,10 +238,12 @@ class FiraModular:
     def tag_detection_loop(self):
         while True:
             time.sleep(self.tag_detection_interval)
-            if self.state != 'conduciendo' or self.latest_img is None:
+            if self.state != 'conduciendo' or self.latest_img is None or not self.tag_detection_enabled:
                 continue
             try:
-                img_copy = cv2.resize(self.latest_img.copy(), (160, 120))
+                img_copy = self.latest_img.copy()
+                if self.reescalar_tag_img:
+                    img_copy = cv2.resize(img_copy, (160, 120))
                 tag = self.detect_apriltag(img_copy)
                 with self.tag_detection_lock:
                     self.last_tag_detected_threaded = tag
@@ -245,10 +264,10 @@ class FiraModular:
         if tag_width == 0:
             return False
         ratio = img_shape[1] / tag_width
-        threshold = self.proximity_thresholds.get(tag.tag_id, self.default_tag_ratio_threshold)
-        return ratio < threshold
+        return ratio < self.tag_ratio_threshold
 
     def advance_step_or_reset(self):
+        self.tag_detection_enabled = True
         if self.use_route_plan:
             self.current_step += 1
             if self.current_step >= len(self.route_plan):
