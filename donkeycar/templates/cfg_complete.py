@@ -5,6 +5,9 @@ CAR_PATH = PACKAGE_PATH = os.path.dirname(os.path.realpath(__file__))
 DATA_PATH = os.path.join(CAR_PATH, 'data')
 MODELS_PATH = os.path.join(CAR_PATH, 'models')
 
+
+# === CONFIGURACIÓN PARA FiraModular ===
+
 FIRA_TAG_DICT = {
     0: 'FORWARD',
     1: 'TURN_RIGHT',
@@ -14,33 +17,30 @@ FIRA_TAG_DICT = {
     5: 'TURN_LEFT'
 }
 
-AI_THROTTLE_MULT = 1.2    
-
-FIRA_PROXIMITY_THRESHOLDS = {
-    0: 10.0,
-    1: 10.0,
-    2: 10.0,
-    3: 10.0,
-    4: 10.0,
-    5: 10.0
-}
+AI_THROTTLE_MULT = 1.1
 
 FIRA_MODULAR = True
 FIRA_USE_ROUTE_PLAN = False
 FIRA_ROUTE_PLAN = ['FORWARD', 'TURN_RIGHT', 'TURN_LEFT', 'STOP']
+
 FIRA_DEBUG = True
+FIRA_REQUIRE_ZEBRA = True               # Requiere zebra para ejecutar acción
+FIRA_ZEBRA_DETECTION_HZ = 5          # Frecuencia detección zebra (Hz)
+FIRA_TAG_DETECTION_HZ = 5              # Frecuencia detección de tags (Hz)
 
-FIRA_REQUIRE_ZEBRA = True   #ZEBRA 
-FIRA_ZEBRA_DETECTION_HZ = 1  # dos veces por segundo
+FIRA_EJECUTAR_AL_DEJAR_VER_TAG = False     # Ejecutar al dejar de ver el tag
+FIRA_USAR_UNA_SOLA_CAMARA = False           # True: usa solo una cámara
 
-FIRA_TAG_DETECTION_HZ = 0.2  # Detectar tags 2 veces por segundo
-FIRA_EJECUTAR_AL_DEJAR_VER_TAG = False
-
-FIRA_USAR_UNA_SOLA_CAMARA = True #UNA SOLA CAMARA O 2
+FIRA_TAG_RATIO_THRESHOLD = 20            # Threshold global para detección de proximidad de tag
+FIRA_REESCALAR_TAG_IMG = False             # True si querés forzar el resize
 
 FIRA_CAMERA_TO_FRONT = 0.10
 FIRA_VEHICLE_WIDTH = 0.12
 FIRA_VEHICLE_LENGTH = 0.25
+
+FIRA_USAR_THREAD_TAG = False           # Nuevo: activa o desactiva threading para tags
+
+
 # For IMAGE_LIST camera
 # PATH_MASK = "~/mycar/data/tub_1_20-03-12/*.jpg"
 # Activar para enviar la configuración personalizada de cámara al simulador
@@ -64,7 +64,7 @@ IMAGE_DEPTH = 3         # default RGB=3, make 1 for mono
 CAMERA_FRAMERATE = DRIVE_LOOP_HZ
 CAMERA_VFLIP = False
 CAMERA_HFLIP = False
-CAMERA_INDEX = 0 # used for 'WEBCAM' and 'CVCAM' when there is more than one camera connected 
+CAMERA_INDEX = 1 # used for 'WEBCAM' and 'CVCAM' when there is more than one camera connected 
 # For CSIC camera - If the camera is mounted in a rotated position, changing the below parameter will correct the output frame orientation
 CSIC_CAM_GSTREAMER_FLIP_PARM = 0 # (0 => none , 4 => Flip horizontally, 6 => Flip vertically)
 BGR2RGB = False  # true to convert from BRG format to RGB format; requires opencv
@@ -98,7 +98,7 @@ PWM_STEERING_THROTTLE = {
     "STEERING_RIGHT_PWM": 265,              #pwm value for full right steering
     "THROTTLE_FORWARD_PWM": 510,            #pwm value for max forward throttle
     "THROTTLE_STOPPED_PWM": 370,            #pwm value for no movement
-    "THROTTLE_REVERSE_PWM": 225,            #pwm value for max reverse throttle
+    "THROTTLE_REVERSE_PWM": 230,            #pwm value for max reverse throttle
 }
 
 

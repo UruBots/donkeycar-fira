@@ -453,14 +453,12 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
         run_condition="run_pilot")
         
-
     # FIRA Modular Engine
     if cfg.FIRA_MODULAR:
         from donkeycar.parts.fira_modular import FiraModular
 
         V.add(FiraModular(
             tag_dict=cfg.FIRA_TAG_DICT,
-            proximity_thresholds=cfg.FIRA_PROXIMITY_THRESHOLDS,
             camera_to_front=cfg.FIRA_CAMERA_TO_FRONT,
             vehicle_width=cfg.FIRA_VEHICLE_WIDTH,
             vehicle_length=cfg.FIRA_VEHICLE_LENGTH,
@@ -471,7 +469,10 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             tag_detection_hz=cfg.FIRA_TAG_DETECTION_HZ,
             ejecutar_accion_al_dejar_de_ver_tag=cfg.FIRA_EJECUTAR_AL_DEJAR_VER_TAG,
             usar_una_sola_camara=cfg.FIRA_USAR_UNA_SOLA_CAMARA,
-            zebra_detection_hz=cfg.FIRA_ZEBRA_DETECTION_HZ
+            zebra_detection_hz=cfg.FIRA_ZEBRA_DETECTION_HZ,
+            tag_ratio_threshold=cfg.FIRA_TAG_RATIO_THRESHOLD,
+            reescalar_tag_img=cfg.FIRA_REESCALAR_TAG_IMG,      # nuevo parámetro
+            usar_thread_tag=cfg.FIRA_USAR_THREAD_TAG           # nuevo parámetro
         ),
         inputs=(['pilot/angle', 'pilot/throttle', 'cam/image_array']
                 if cfg.FIRA_USAR_UNA_SOLA_CAMARA else
