@@ -17,7 +17,7 @@ FIRA_TAG_DICT = {
     5: 'TURN_LEFT'
 }
 
-AI_THROTTLE_MULT = 1.1
+AI_THROTTLE_MULT = 1
 
 FIRA_MODULAR = True
 FIRA_USE_ROUTE_PLAN = False
@@ -28,10 +28,10 @@ FIRA_REQUIRE_ZEBRA = True               # Requiere zebra para ejecutar acción
 FIRA_ZEBRA_DETECTION_HZ = 5          # Frecuencia detección zebra (Hz)
 FIRA_TAG_DETECTION_HZ = 5              # Frecuencia detección de tags (Hz)
 
-FIRA_EJECUTAR_AL_DEJAR_VER_TAG = False     # Ejecutar al dejar de ver el tag
+FIRA_EJECUTAR_AL_DEJAR_VER_TAG = False    # Ejecutar al dejar de ver el tag
 FIRA_USAR_UNA_SOLA_CAMARA = False           # True: usa solo una cámara
 
-FIRA_TAG_RATIO_THRESHOLD = 20            # Threshold global para detección de proximidad de tag
+FIRA_TAG_RATIO_THRESHOLD = 26            # Threshold global para detección de proximidad de tag
 FIRA_REESCALAR_TAG_IMG = False             # True si querés forzar el resize
 
 FIRA_CAMERA_TO_FRONT = 0.10
@@ -95,10 +95,10 @@ PWM_STEERING_THROTTLE = {
     "PWM_THROTTLE_SCALE": 1.0,              # used to compensate for PWM frequence differences from 60hz; NOT for increasing/limiting speed
     "PWM_THROTTLE_INVERTED": False,         # True if hardware requires an inverted PWM pulse
     "STEERING_LEFT_PWM": 455,               #pwm value for full left steering
-    "STEERING_RIGHT_PWM": 265,              #pwm value for full right steering
-    "THROTTLE_FORWARD_PWM": 510,            #pwm value for max forward throttle
+    "STEERING_RIGHT_PWM": 255,              #pwm value for full right steering
+    "THROTTLE_FORWARD_PWM": 570,            #pwm value for max forward throttle
     "THROTTLE_STOPPED_PWM": 370,            #pwm value for no movement
-    "THROTTLE_REVERSE_PWM": 230,            #pwm value for max reverse throttle
+    "THROTTLE_REVERSE_PWM": 180,            #pwm value for max reverse throttle
 }
 
 
@@ -125,7 +125,7 @@ PCA9685_I2C_ADDR = 0x40     #I2C address, use i2cdetect to validate this number
 PCA9685_I2C_BUSNUM = None   #None will auto detect, which is fine on the pi. But other platforms should specify the bus num.
 
 #SSD1306_128_32
-USE_SSD1306_128_32 = False    # Enable the SSD_1306 OLED Display
+USE_SSD1306_128_32 = True    # Enable the SSD_1306 OLED Display
 SSD1306_128_32_I2C_ROTATION = 0 # 0 = text is right-side up, 1 = rotated 90 degrees clockwise, 2 = 180 degrees (flipped), 3 = 270 degrees
 SSD1306_RESOLUTION = 1 # 1 = 128x32; 2 = 128x64
 

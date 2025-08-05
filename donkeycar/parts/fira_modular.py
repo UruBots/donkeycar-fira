@@ -103,13 +103,13 @@ class FiraModular:
 
         self.sequences = {
             'corregido_right': [
-                {'duration': 1.8, 'angle': 0, 'throttle': 0.12},
-                {'duration': 1.7, 'angle': -1.0, 'throttle': -0.13},
-                {'duration': 1.7, 'angle': 1, 'throttle': 0.12},
+                {'duration': 2.05, 'angle': 0, 'throttle': 0.09},
+                {'duration': 1.6, 'angle': -1.0, 'throttle': -0.11},
+                {'duration': 2.3, 'angle': 1, 'throttle': 0.09},
             ],
             'simple_left': [
-                {'duration': 2, 'angle': 0, 'throttle': 0.12},
-                {'duration': 2.4, 'angle': -1.0, 'throttle': 0.13},
+                {'duration': 2, 'angle': 0, 'throttle': 0.1},
+                {'duration': 2.4, 'angle': -1.0, 'throttle': 0.09},
             ],
             'FORWARD': [
                 {'duration': 3, 'angle': 0.0, 'throttle': 0.15},
@@ -282,5 +282,5 @@ class FiraModular:
         if tag_name in ['TURN_RIGHT', 'TURN_LEFT']:
             tipo = self.giro_config.get(tag_name, 'simple')
             self.sequence = self.sequences.get(f"{tipo}_{tag_name.lower().split('_')[1]}", [])
-        else:
+        else:   
             self.sequence = self.sequences.get(tag_name, [])
