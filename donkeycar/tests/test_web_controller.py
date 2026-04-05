@@ -30,3 +30,30 @@ def test_web_control_user_defined_port():
     
     assert server.port == 12345
 
+
+def test_webrtc_defaults():
+    server = LocalWebController(port=8887)
+
+    assert server.webrtc_enabled is True
+    assert server.webrtc_ice_servers == []
+
+
+def test_webrtc_config_overrides():
+    ice_servers = [
+        {"urls": "stun:stun.l.google.com:19302"},
+        {
+            "urls": "turn:turn.example.com:3478",
+            "username": "user",
+            "credential": "pass",
+        },
+    ]
+    server = LocalWebController(
+        port=9000,
+        mode='local',
+        webrtc_enabled=False,
+        webrtc_ice_servers=ice_servers,
+    )
+
+    assert server.webrtc_enabled is False
+    assert server.webrtc_ice_servers == ice_servers
+

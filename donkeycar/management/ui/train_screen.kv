@@ -208,6 +208,21 @@
                         root.train()
                         self.disabled = True
 
+            BoxLayout:
+                size_hint_y: None
+                height: common_height
+                spacing: spacing
+                MyLabel:
+                    text: 'Glare mask'
+                RoundedToggleButton:
+                    id: glare_mask_toggle
+                    text: 'Enabled' if self.state == 'down' else 'Disabled'
+                MyLabel:
+                    text: 'Style transfer'
+                RoundedToggleButton:
+                    id: style_transfer_toggle
+                    text: 'Enabled' if self.state == 'down' else 'Disabled'
+
         BackgroundBoxLayout:
             size_hint_y: 2
             orientation: 'vertical'

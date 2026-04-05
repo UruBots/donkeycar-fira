@@ -3,8 +3,8 @@
 Scripts to drive a donkey 2 car
 
 Usage:
-    manage.py (drive) [--model=<model>] [--js] [--type=(linear|categorical)] [--camera=(single|stereo)] [--meta=<key:value> ...] [--myconfig=<filename>]
-    manage.py (train) [--tubs=tubs] (--model=<model>) [--type=(linear|inferred|tensorrt_linear|tflite_linear)]
+    manage.py (drive) [--model=<model>] [--js] [--type=(linear|pilotnet|mlp|categorical|memory|rnn|cnn_lstm|confidence|vit|world_model|diffusion_policy|inferred|tensorrt_linear|tflite_linear)] [--camera=(single|stereo)] [--meta=<key:value> ...] [--myconfig=<filename>]
+    manage.py (train) [--tubs=tubs] (--model=<model>) [--type=(linear|pilotnet|mlp|categorical|memory|rnn|cnn_lstm|confidence|vit|world_model|diffusion_policy|inferred|tensorrt_linear|tflite_linear)]
 
 Options:
     -h --help               Show this screen.
@@ -27,6 +27,7 @@ except:
 
 
 import donkeycar as dk
+import importlib
 from donkeycar.parts.transform import TriggeredCallback, DelayedTrigger
 from donkeycar.parts.tub_v2 import TubWriter
 from donkeycar.parts.datastore import TubHandler
@@ -45,6 +46,167 @@ from donkeycar.utils import *
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+class FiraEngineHealthAdapter:
+    """Wrap a FIRA engine and expose health as a fourth output."""
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def run(self, angle, throttle, image_array):
+        out_angle, out_throttle, out_image = self.engine.run(
+            angle, throttle, image_array
+        )
+        return out_angle, out_throttle, out_image, self.engine.get_health()
+
+
+def fira_health_to_metrics(health):
+    if not isinstance(health, dict):
+        return False, 0, 0, 'unknown', 'unavailable', ''
+
+    return (
+        bool(health.get('detector_ready', False)),
+        int(health.get('consecutive_detection_errors', 0)),
+        int(health.get('max_consecutive_detection_errors', 0)),
+        str(health.get('state', 'unknown')),
+        str(health.get('detector_backend', 'unavailable')),
+        str(health.get('last_detection_error', '')),
+    )
+
+
+def fira_safety_signal_estimator_inputs(cfg):
+    inputs = ['cam/image_array', 'pilot/angle']
+    if getattr(cfg, 'FIRA_ENGINE_YOLO', False):
+        inputs.append('fira/yolo/detector_ready')
+    if getattr(cfg, 'FIRA_ENGINE_TF', False):
+        inputs.append('fira/tf/detector_ready')
+    if getattr(cfg, 'FIRA_PROFILE_SCHEDULER_ENABLED', False):
+        inputs.append('fira/active_profile')
+    return inputs
+
+
+def fira_profile_scheduler_inputs(cfg):
+    inputs = []
+    if getattr(cfg, 'FIRA_SAFETY_SIGNAL_ESTIMATOR', False):
+        inputs += ['fira/lane_confidence', 'fira/obstacle_severity']
+    if getattr(cfg, 'FIRA_STATE_MACHINE', False):
+        inputs += ['fira/drive/state']
+    return inputs
+
+
+def fira_safety_arbiter_inputs(cfg):
+    inputs = ['pilot/angle', 'pilot/throttle', 'cam/image_array']
+    if getattr(cfg, 'FIRA_ENGINE_YOLO', False):
+        inputs.append('fira/yolo/health')
+    if getattr(cfg, 'FIRA_ENGINE_TF', False):
+        inputs.append('fira/tf/health')
+    if getattr(cfg, 'FIRA_SAFETY_SIGNAL_ESTIMATOR', False):
+        inputs += [
+            'fira/lane_angle', 'fira/lane_confidence',
+            'fira/obstacle_steering_correction', 'fira/obstacle_severity',
+        ]
+    if getattr(cfg, 'FIRA_STATE_MACHINE', False):
+        inputs += ['fira/drive/state', 'fira/drive/state_throttle_cap']
+    return inputs
+
+
+def fira_drive_state_machine_inputs(cfg):
+    inputs = []
+    if getattr(cfg, 'FIRA_ENGINE_YOLO', False):
+        inputs += ['fira/yolo/state', 'fira/yolo/health']
+    if getattr(cfg, 'FIRA_ENGINE_TF', False):
+        inputs += ['fira/tf/state', 'fira/tf/health']
+    if getattr(cfg, 'FIRA_SAFETY_SIGNAL_ESTIMATOR', False):
+        inputs += ['fira/lane_confidence', 'fira/obstacle_severity']
+    return inputs
+
+
+def fira_challenge_inputs(cfg):
+    inputs = ['pilot/angle', 'pilot/throttle', 'cam/image_array']
+    if getattr(cfg, 'FIRA_SAFETY_SIGNAL_ESTIMATOR', False):
+        inputs += ['fira/lane_confidence', 'fira/obstacle_severity']
+    return inputs
+
+
+def fira_competition_metrics_inputs(cfg):
+    inputs = []
+    if getattr(cfg, 'FIRA_SAFETY_SIGNAL_ESTIMATOR', False):
+        inputs += ['fira/lane_confidence', 'fira/lane_angle', 'fira/obstacle_severity']
+    if getattr(cfg, 'FIRA_STATE_MACHINE', False):
+        inputs += ['fira/drive/state']
+    if getattr(cfg, 'FIRA_CHECKPOINT_DETECTOR_ENABLED', False):
+        inputs += ['fira/checkpoint_event']
+    return inputs
+
+
+def fira_health_telemetry_inputs(cfg):
+    inputs = []
+    types = []
+    if getattr(cfg, 'FIRA_ENGINE_YOLO', False):
+        inputs += ['fira/yolo/detector_ready', 'fira/yolo/errors',
+                   'fira/yolo/max_errors', 'fira/yolo/state',
+                   'fira/yolo/backend', 'fira/yolo/last_error']
+        types += ['boolean', 'int', 'int', 'str', 'str', 'str']
+    if getattr(cfg, 'FIRA_ENGINE_TF', False):
+        inputs += ['fira/tf/detector_ready', 'fira/tf/errors',
+                   'fira/tf/max_errors', 'fira/tf/state',
+                   'fira/tf/backend', 'fira/tf/last_error']
+        types += ['boolean', 'int', 'int', 'str', 'str', 'str']
+    if getattr(cfg, 'FIRA_SAFETY_ARBITER', False):
+        inputs += ['fira/safety/failsafe_active', 'fira/safety/lane_weight',
+                   'fira/safety/obstacle_weight', 'fira/safety/curve_factor',
+                   'fira/safety/speed_limit_factor']
+        types += ['boolean', 'float', 'float', 'float', 'float']
+    if getattr(cfg, 'FIRA_STATE_MACHINE', False):
+        inputs += ['fira/drive/state', 'fira/drive/state_throttle_cap']
+        types += ['str', 'float']
+    if getattr(cfg, 'FIRA_COMPETITION_METRICS', False):
+        inputs += [
+            'fira/competition/right_lane_score',
+            'fira/competition/checkpoint_count',
+            'fira/competition/checkpoint_progress',
+            'fira/competition/lane_violations',
+            'fira/competition/active_frames',
+            'fira/competition/compliance_score',
+            'fira/competition/compliance_ready',
+        ]
+        types += ['float', 'int', 'float', 'int', 'int', 'float', 'boolean']
+    if getattr(cfg, 'FIRA_CHECKPOINT_DETECTOR_ENABLED', False):
+        inputs += ['fira/checkpoint_event', 'fira/checkpoint_confidence']
+        types += ['float', 'float']
+    return inputs, types
+
+
+def web_controller_inputs(cfg, input_image='ui/image_array'):
+    inputs = [input_image, 'tub/num_records', 'user/mode', 'recording']
+
+    if getattr(cfg, 'FIRA_SAFETY_SIGNAL_ESTIMATOR', False):
+        inputs += ['fira/obstacle_severity', 'fira/lane_confidence']
+
+    if getattr(cfg, 'FIRA_SAFETY_ARBITER', False) and getattr(cfg, 'FIRA_HEALTH_TELEMETRY', False):
+        inputs += ['fira/safety/failsafe_active', 'fira/safety/lane_weight',
+                   'fira/safety/obstacle_weight', 'fira/safety/curve_factor',
+                   'fira/safety/speed_limit_factor']
+
+    if getattr(cfg, 'FIRA_STATE_MACHINE', False):
+        inputs += ['fira/drive/state', 'fira/drive/state_throttle_cap']
+
+    if getattr(cfg, 'FIRA_COMPETITION_METRICS', False):
+        inputs += [
+            'fira/competition/right_lane_score',
+            'fira/competition/checkpoint_count',
+            'fira/competition/checkpoint_progress',
+            'fira/competition/lane_violations',
+            'fira/competition/active_frames',
+            'fira/competition/compliance_score',
+            'fira/competition/compliance_ready',
+        ]
+
+    if getattr(cfg, 'FIRA_CHECKPOINT_DETECTOR_ENABLED', False):
+        inputs += ['fira/checkpoint_event', 'fira/checkpoint_confidence']
+
+    return inputs
 
 
 def drive(cfg, model_path=None, use_joystick=False, model_type=None,
@@ -276,8 +438,14 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     def load_model(kl, model_path):
         start = time.time()
         print('loading model', model_path)
-        kl.load(model_path)
-        print('finished loading in %s sec.' % (str(time.time() - start)) )
+        try:
+            kl.load(model_path)
+            dk.utils.apply_model_metadata(cfg, dk.utils.read_model_metadata(model_path))
+            print('finished loading in %s sec.' % (str(time.time() - start)) )
+            return True
+        except Exception as e:
+            logger.error('ERR>> problems loading model %s: %s', model_path, e)
+            return False
 
     def load_weights(kl, weights_path):
         start = time.time()
@@ -317,10 +485,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         if '.h5' in model_path or '.trt' in model_path or '.tflite' in \
             model_path or '.savedmodel' in model_path or '.pth' in model_path:
             # load the whole model with weigths, etc
-            load_model(kl, model_path)
+            kl, _ = dk.utils.load_model_with_fallback(model_type, cfg, model_path)
 
             def reload_model(filename):
-                load_model(kl, filename)
+                if not load_model(kl, filename):
+                    logger.warning('Hot reload failed for %s. Keeping previous in-memory model.', filename)
 
             model_reload_cb = reload_model
 
@@ -467,12 +636,19 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             debug=cfg.FIRA_DEBUG,
             require_zebra=cfg.FIRA_REQUIRE_ZEBRA,
             tag_detection_hz=cfg.FIRA_TAG_DETECTION_HZ,
-            ejecutar_accion_al_dejar_de_ver_tag=cfg.FIRA_EJECUTAR_AL_DEJAR_VER_TAG,
+            ejecutar_accion_al_dejar_de_ver_tag=cfg.FIRA_EXECUTE_ON_TAG_LOSS,
             usar_una_sola_camara=cfg.FIRA_USAR_UNA_SOLA_CAMARA,
             zebra_detection_hz=cfg.FIRA_ZEBRA_DETECTION_HZ,
             tag_ratio_threshold=cfg.FIRA_TAG_RATIO_THRESHOLD,
             reescalar_tag_img=cfg.FIRA_REESCALAR_TAG_IMG,      # nuevo parámetro
-            usar_thread_tag=cfg.FIRA_USAR_THREAD_TAG           # nuevo parámetro
+            usar_thread_tag=cfg.FIRA_USAR_THREAD_TAG,          # nuevo parámetro
+            opencv_sign_fallback=cfg.FIRA_OPENCV_SIGN_FALLBACK,
+            opencv_sign_min_confidence=cfg.FIRA_OPENCV_SIGN_MIN_CONFIDENCE,
+            opencv_sign_min_area=cfg.FIRA_OPENCV_SIGN_MIN_AREA,
+            opencv_sign_debug=cfg.FIRA_OPENCV_SIGN_DEBUG,
+            require_stop_line=getattr(cfg, 'FIRA_REQUIRE_STOP_LINE', True),
+            stop_line_min_dist_px=getattr(cfg, 'FIRA_STOP_LINE_MIN_DIST_PX', 6),
+            stop_line_max_dist_px=getattr(cfg, 'FIRA_STOP_LINE_MAX_DIST_PX', 18),
         ),
         inputs=(['pilot/angle', 'pilot/throttle', 'cam/image_array']
                 if cfg.FIRA_USAR_UNA_SOLA_CAMARA else
@@ -485,8 +661,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     if cfg.FIRA_ENGINE_YOLO:
         from donkeycar.parts.fira_signals_engine.fira_engine_yolo \
             import FIRAEngineYolo
-        
-        V.add(FIRAEngineYolo(
+
+        fira_yolo_engine = FIRAEngineYolo(
             model_folder = cfg.MODELS_PATH,
             yolo_model_name=cfg.FIRA_MODEL_NAME,
             yolo_classes=cfg.FIRA_YOLO_CLASSES,
@@ -499,20 +675,29 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             proceed_correction_duration=cfg.PROCEED_CORRECTION_DURATION,
             proceed_straight_duration=cfg.PROCEED_STRAIGHT_DURATION,
             wait_duration=cfg.WAIT_DURATION,
+            yolo_disable_after_errors=cfg.FIRA_YOLO_DISABLE_AFTER_ERRORS,
             debug_visuals=cfg.FIRA_DEBUG_VISUALS,
             debug=cfg.FIRA_DEBUG
-        ),
+        )
+
+        V.add(FiraEngineHealthAdapter(fira_yolo_engine),
         inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
-        outputs=['pilot/angle', 'pilot/throttle', 'ui/image_array'],
+        outputs=['pilot/angle', 'pilot/throttle', 'ui/image_array', 'fira/yolo/health'],
         run_condition="run_pilot")
+
+        V.add(Lambda(fira_health_to_metrics),
+              inputs=['fira/yolo/health'],
+              outputs=['fira/yolo/detector_ready', 'fira/yolo/errors',
+                     'fira/yolo/max_errors', 'fira/yolo/state',
+                     'fira/yolo/backend', 'fira/yolo/last_error'])
 
 
     #FIRA YOLO TENSORFLOW
     if cfg.FIRA_ENGINE_TF:
         from donkeycar.parts.fira_signals_engine.fira_engine_tensorflow \
             import FIRAEngineTensorFlow
-        
-        V.add(FIRAEngineTensorFlow(
+
+        fira_tf_engine = FIRAEngineTensorFlow(
             model_folder = cfg.MODELS_PATH,
             tf_model_name=cfg.FIRA_TF_MODEL_NAME,
             fira_classes=cfg.FIRA_TF_CLASSES,
@@ -525,12 +710,232 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             proceed_correction_duration=cfg.PROCEED_CORRECTION_DURATION,
             proceed_straight_duration=cfg.PROCEED_STRAIGHT_DURATION,
             wait_duration=cfg.WAIT_DURATION,
+            tf_disable_after_errors=cfg.FIRA_TF_DISABLE_AFTER_ERRORS,
             debug_visuals=cfg.FIRA_TF_DEBUG_VISUALS,
             debug=cfg.FIRA_TF_DEBUG
-        ),
+        )
+
+        V.add(FiraEngineHealthAdapter(fira_tf_engine),
         inputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
-        outputs=['pilot/angle', 'pilot/throttle', 'ui/image_array'],
-        run_condition="run_pilot")   
+        outputs=['pilot/angle', 'pilot/throttle', 'ui/image_array', 'fira/tf/health'],
+        run_condition="run_pilot")
+
+        V.add(Lambda(fira_health_to_metrics),
+              inputs=['fira/tf/health'],
+              outputs=['fira/tf/detector_ready', 'fira/tf/errors',
+                     'fira/tf/max_errors', 'fira/tf/state',
+                     'fira/tf/backend', 'fira/tf/last_error'])
+
+    # FIRA safety arbiter
+    if getattr(cfg, 'FIRA_SAFETY_ARBITER', False):
+        if getattr(cfg, 'FIRA_SAFETY_SIGNAL_ESTIMATOR', False):
+            if getattr(cfg, 'FIRA_PROFILE_SCHEDULER_ENABLED', False):
+                from donkeycar.parts.fira_profile_scheduler import FiraProfileScheduler
+
+                V.add(
+                    FiraProfileScheduler(
+                        enabled=cfg.FIRA_PROFILE_SCHEDULER_ENABLED,
+                        default_profile=cfg.FIRA_SAFETY_URBAN_CONE_PROFILE,
+                        min_dwell_frames=cfg.FIRA_PROFILE_SCHEDULER_MIN_DWELL_FRAMES,
+                        low_lane_conf_to_safe=cfg.FIRA_PROFILE_SCHEDULER_LOW_LANE_CONF_TO_SAFE,
+                        race_enter_severity=cfg.FIRA_PROFILE_SCHEDULER_RACE_ENTER_SEVERITY,
+                        race_exit_severity=cfg.FIRA_PROFILE_SCHEDULER_RACE_EXIT_SEVERITY,
+                        tight_enter_severity=cfg.FIRA_PROFILE_SCHEDULER_TIGHT_ENTER_SEVERITY,
+                        tight_exit_severity=cfg.FIRA_PROFILE_SCHEDULER_TIGHT_EXIT_SEVERITY,
+                        debug=cfg.FIRA_PROFILE_SCHEDULER_DEBUG,
+                    ),
+                    inputs=fira_profile_scheduler_inputs(cfg),
+                    outputs=['fira/active_profile'],
+                    run_condition='run_pilot',
+                )
+
+            from donkeycar.parts.fira_safety_signals import FiraSafetySignalsEstimator
+
+            V.add(
+                FiraSafetySignalsEstimator(
+                    lane_enabled=cfg.FIRA_SAFETY_SIGNAL_LANE_ENABLED,
+                    lane_roi_top_ratio=cfg.FIRA_SAFETY_SIGNAL_LANE_ROI_TOP_RATIO,
+                    lane_color_low=cfg.FIRA_SAFETY_SIGNAL_LANE_COLOR_LOW,
+                    lane_color_high=cfg.FIRA_SAFETY_SIGNAL_LANE_COLOR_HIGH,
+                    lane_min_pixel_ratio=cfg.FIRA_SAFETY_SIGNAL_LANE_MIN_PIXEL_RATIO,
+                    lane_full_pixel_ratio=cfg.FIRA_SAFETY_SIGNAL_LANE_FULL_PIXEL_RATIO,
+                    lane_steering_gain=cfg.FIRA_SAFETY_SIGNAL_LANE_STEERING_GAIN,
+                    lane_angle_max_abs=cfg.FIRA_SAFETY_LANE_ANGLE_MAX_ABS,
+                    obstacle_enabled=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_ENABLED,
+                    obstacle_roi_top_ratio=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_ROI_TOP_RATIO,
+                    obstacle_roi_bottom_ratio=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_ROI_BOTTOM_RATIO,
+                    obstacle_center_band_ratio=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_CENTER_BAND_RATIO,
+                    obstacle_color_low=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_COLOR_LOW,
+                    obstacle_color_high=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_COLOR_HIGH,
+                    obstacle_min_pixel_ratio=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_MIN_PIXEL_RATIO,
+                    obstacle_full_pixel_ratio=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_FULL_PIXEL_RATIO,
+                    obstacle_max_correction=cfg.FIRA_SAFETY_OBSTACLE_CORRECTION_MAX_ABS,
+                    obstacle_lane_change_enabled=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_LANE_CHANGE_ENABLED,
+                    obstacle_engage_severity=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_ENGAGE_SEVERITY,
+                    obstacle_avoid_min_correction=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_CORRECTION,
+                    obstacle_avoid_min_severity=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_SEVERITY,
+                    obstacle_clear_frames=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_CLEAR_FRAMES,
+                    obstacle_recover_frames=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_FRAMES,
+                    obstacle_recover_max_correction=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MAX_CORRECTION,
+                    obstacle_recover_min_severity=cfg.FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MIN_SEVERITY,
+                    reduce_signals_when_detector_down=cfg.FIRA_SAFETY_SIGNAL_REDUCE_ON_DETECTOR_DOWN,
+                    detector_down_signal_scale=cfg.FIRA_SAFETY_SIGNAL_DETECTOR_DOWN_SCALE,
+                    enable_temporal_smoothing=cfg.FIRA_SAFETY_SIGNAL_ENABLE_TEMPORAL_SMOOTHING,
+                    smoothing_alpha=cfg.FIRA_SAFETY_SIGNAL_SMOOTHING_ALPHA,
+                    debug=cfg.FIRA_SAFETY_SIGNAL_DEBUG,
+                ),
+                inputs=fira_safety_signal_estimator_inputs(cfg),
+                outputs=['fira/lane_angle', 'fira/lane_confidence',
+                         'fira/obstacle_steering_correction', 'fira/obstacle_severity'],
+                run_condition='run_pilot',
+            )
+
+        from donkeycar.parts.fira_safety_arbiter import FiraSafetyArbiter
+        from donkeycar.parts.fira_safety_arbiter import FiraSafetyArbiterTelemetryAdapter
+
+        fira_arbiter = FiraSafetyArbiter(
+                max_abs_steering=cfg.FIRA_SAFETY_MAX_ABS_STEERING,
+                throttle_min=cfg.FIRA_SAFETY_THROTTLE_MIN,
+                throttle_max=cfg.FIRA_SAFETY_THROTTLE_MAX,
+                curve_throttle_start=cfg.FIRA_SAFETY_CURVE_START,
+                curve_throttle_full=cfg.FIRA_SAFETY_CURVE_FULL,
+                curve_throttle_factor_min=cfg.FIRA_SAFETY_CURVE_FACTOR_MIN,
+                failsafe_throttle_cap=cfg.FIRA_SAFETY_FAILSAFE_THROTTLE_CAP,
+            severe_failsafe_throttle_cap=cfg.FIRA_SAFETY_SEVERE_FAILSAFE_THROTTLE_CAP,
+                use_yolo_detector_failsafe=cfg.FIRA_SAFETY_USE_YOLO_FAILSAFE,
+                use_tf_detector_failsafe=cfg.FIRA_SAFETY_USE_TF_FAILSAFE,
+                max_steering_delta_per_sec=cfg.FIRA_SAFETY_MAX_STEERING_DELTA_PER_SEC,
+                max_throttle_delta_per_sec=cfg.FIRA_SAFETY_MAX_THROTTLE_DELTA_PER_SEC,
+                use_lane_guidance=cfg.FIRA_SAFETY_USE_LANE_GUIDANCE,
+                lane_confidence_min=cfg.FIRA_SAFETY_LANE_CONFIDENCE_MIN,
+                lane_blend_max=cfg.FIRA_SAFETY_LANE_BLEND_MAX,
+                lane_angle_max_abs=cfg.FIRA_SAFETY_LANE_ANGLE_MAX_ABS,
+                use_obstacle_correction=cfg.FIRA_SAFETY_USE_OBSTACLE_CORRECTION,
+                obstacle_correction_max_abs=cfg.FIRA_SAFETY_OBSTACLE_CORRECTION_MAX_ABS,
+                obstacle_blend_max=cfg.FIRA_SAFETY_OBSTACLE_BLEND_MAX,
+                obstacle_throttle_factor_min=cfg.FIRA_SAFETY_OBSTACLE_THROTTLE_FACTOR_MIN,
+                debug=cfg.FIRA_SAFETY_DEBUG,
+        )
+
+        if getattr(cfg, 'FIRA_HEALTH_TELEMETRY', False):
+            V.add(
+                FiraSafetyArbiterTelemetryAdapter(fira_arbiter),
+                inputs=fira_safety_arbiter_inputs(cfg),
+                outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array',
+                         'fira/safety/failsafe_active', 'fira/safety/lane_weight',
+                         'fira/safety/obstacle_weight', 'fira/safety/curve_factor',
+                         'fira/safety/speed_limit_factor'],
+                run_condition='run_pilot',
+            )
+        else:
+            V.add(
+                fira_arbiter,
+                inputs=fira_safety_arbiter_inputs(cfg),
+                outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+                run_condition='run_pilot',
+            )
+
+    if getattr(cfg, 'FIRA_CHALLENGE_ENABLED', False):
+        from donkeycar.parts.fira_challenge import FiraChallengePart
+
+        V.add(
+            FiraChallengePart(
+                enabled=cfg.FIRA_CHALLENGE_ENABLED,
+                max_abs_steering=cfg.FIRA_CHALLENGE_MAX_ABS_STEERING,
+                max_abs_correction=cfg.FIRA_CHALLENGE_MAX_ABS_CORRECTION,
+                steering_gain=cfg.FIRA_CHALLENGE_STEERING_GAIN,
+                max_steering_delta_per_sec=cfg.FIRA_CHALLENGE_MAX_STEERING_DELTA_PER_SEC,
+                min_throttle_factor=cfg.FIRA_CHALLENGE_MIN_THROTTLE_FACTOR,
+                lane_color_low=cfg.FIRA_CHALLENGE_LANE_COLOR_LOW,
+                lane_color_high=cfg.FIRA_CHALLENGE_LANE_COLOR_HIGH,
+                lane_roi_top_ratio=cfg.FIRA_CHALLENGE_LANE_ROI_TOP_RATIO,
+                lane_min_pixel_ratio=cfg.FIRA_CHALLENGE_LANE_MIN_PIXEL_RATIO,
+                lane_margin_px=cfg.FIRA_CHALLENGE_LANE_MARGIN_PX,
+                car_color_low=cfg.FIRA_CHALLENGE_CAR_COLOR_LOW,
+                car_color_high=cfg.FIRA_CHALLENGE_CAR_COLOR_HIGH,
+                cone_color_low=cfg.FIRA_CHALLENGE_CONE_COLOR_LOW,
+                cone_color_high=cfg.FIRA_CHALLENGE_CONE_COLOR_HIGH,
+                obstacle_roi_top_ratio=cfg.FIRA_CHALLENGE_OBS_ROI_TOP_RATIO,
+                obstacle_roi_bottom_ratio=cfg.FIRA_CHALLENGE_OBS_ROI_BOTTOM_RATIO,
+                obstacle_min_area_ratio=cfg.FIRA_CHALLENGE_OBS_MIN_AREA_RATIO,
+                obstacle_full_area_ratio=cfg.FIRA_CHALLENGE_OBS_FULL_AREA_RATIO,
+                obstacle_max_area_ratio=cfg.FIRA_CHALLENGE_OBS_MAX_AREA_RATIO,
+                obstacle_min_aspect=cfg.FIRA_CHALLENGE_OBS_MIN_ASPECT,
+                obstacle_max_aspect=cfg.FIRA_CHALLENGE_OBS_MAX_ASPECT,
+                nearest_weight=cfg.FIRA_CHALLENGE_NEAREST_WEIGHT,
+                clearance_px=cfg.FIRA_CHALLENGE_CLEARANCE_PX,
+                engage_severity=cfg.FIRA_CHALLENGE_ENGAGE_SEVERITY,
+                clear_frames=cfg.FIRA_CHALLENGE_CLEAR_FRAMES,
+                recover_frames=cfg.FIRA_CHALLENGE_RECOVER_FRAMES,
+                smoothing_alpha=cfg.FIRA_CHALLENGE_SMOOTHING_ALPHA,
+                warmup_frames=cfg.FIRA_CHALLENGE_WARMUP_FRAMES,
+                warmup_steering_gain=cfg.FIRA_CHALLENGE_WARMUP_STEERING_GAIN,
+                warmup_max_abs_angle=cfg.FIRA_CHALLENGE_WARMUP_MAX_ABS_ANGLE,
+                warmup_throttle=cfg.FIRA_CHALLENGE_WARMUP_THROTTLE,
+                predictive_enabled=cfg.FIRA_CHALLENGE_PREDICTIVE_ENABLED,
+                predictive_horizon_sec=cfg.FIRA_CHALLENGE_PREDICTIVE_HORIZON_SEC,
+                predictive_blend=cfg.FIRA_CHALLENGE_PREDICTIVE_BLEND,
+                predictive_velocity_alpha=cfg.FIRA_CHALLENGE_PREDICTIVE_VELOCITY_ALPHA,
+                predictive_min_confidence=cfg.FIRA_CHALLENGE_PREDICTIVE_MIN_CONFIDENCE,
+                predictive_max_missing_frames=cfg.FIRA_CHALLENGE_PREDICTIVE_MAX_MISSING_FRAMES,
+                collision_imminent_enabled=cfg.FIRA_CHALLENGE_COLLISION_IMMINENT_ENABLED,
+                collision_imminent_proximity=cfg.FIRA_CHALLENGE_COLLISION_IMMINENT_PROXIMITY,
+                collision_imminent_occupancy=cfg.FIRA_CHALLENGE_COLLISION_IMMINENT_OCCUPANCY,
+                collision_imminent_throttle_cap=cfg.FIRA_CHALLENGE_COLLISION_IMMINENT_THROTTLE_CAP,
+                debug=cfg.FIRA_CHALLENGE_DEBUG,
+            ),
+            inputs=fira_challenge_inputs(cfg),
+            outputs=['pilot/angle', 'pilot/throttle', 'cam/image_array'],
+            run_condition='run_pilot',
+        )
+
+    if getattr(cfg, 'FIRA_CHECKPOINT_DETECTOR_ENABLED', False):
+        from donkeycar.parts.fira_checkpoint_detector import FiraCheckpointDetector
+
+        V.add(
+            FiraCheckpointDetector(
+                enabled=cfg.FIRA_CHECKPOINT_DETECTOR_ENABLED,
+                color_low=cfg.FIRA_CHECKPOINT_COLOR_LOW,
+                color_high=cfg.FIRA_CHECKPOINT_COLOR_HIGH,
+                color_low_2=cfg.FIRA_CHECKPOINT_COLOR_LOW_2,
+                color_high_2=cfg.FIRA_CHECKPOINT_COLOR_HIGH_2,
+                roi_top_ratio=cfg.FIRA_CHECKPOINT_ROI_TOP_RATIO,
+                min_pixel_ratio=cfg.FIRA_CHECKPOINT_MIN_PIXEL_RATIO,
+                cooldown_frames=cfg.FIRA_CHECKPOINT_COOLDOWN_FRAMES,
+                debug=cfg.FIRA_CHECKPOINT_DEBUG,
+            ),
+            inputs=['cam/image_array'],
+            outputs=['fira/checkpoint_event', 'fira/checkpoint_confidence'],
+            run_condition='run_pilot',
+        )
+
+    if getattr(cfg, 'FIRA_COMPETITION_METRICS', False):
+        from donkeycar.parts.fira_competition_metrics import FiraCompetitionMetrics
+
+        V.add(
+            FiraCompetitionMetrics(
+                enabled=cfg.FIRA_COMPETITION_METRICS,
+                lane_conf_min=cfg.FIRA_COMPETITION_LANE_CONF_MIN,
+                right_lane_angle_min=cfg.FIRA_COMPETITION_RIGHT_LANE_ANGLE_MIN,
+                right_lane_angle_max=cfg.FIRA_COMPETITION_RIGHT_LANE_ANGLE_MAX,
+                checkpoint_min_right_lane_streak=cfg.FIRA_COMPETITION_CHECKPOINT_MIN_RIGHT_LANE_STREAK,
+                checkpoint_cooldown_frames=cfg.FIRA_COMPETITION_CHECKPOINT_COOLDOWN_FRAMES,
+                target_checkpoints=cfg.FIRA_COMPETITION_TARGET_CHECKPOINTS,
+                compliance_score_threshold=cfg.FIRA_COMPETITION_COMPLIANCE_SCORE_THRESHOLD,
+            ),
+            inputs=fira_competition_metrics_inputs(cfg),
+            outputs=[
+                'fira/competition/right_lane_score',
+                'fira/competition/checkpoint_count',
+                'fira/competition/checkpoint_progress',
+                'fira/competition/lane_violations',
+                'fira/competition/active_frames',
+                'fira/competition/compliance_score',
+                'fira/competition/compliance_ready',
+            ],
+            run_condition='run_pilot',
+        )
+
     #
     # to give the car a boost when starting ai mode in a race.
     # This will also override the stop sign detector so that
@@ -626,6 +1031,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         inputs += ['pilot/angle', 'pilot/throttle']
         types += ['float', 'float']
 
+    if getattr(cfg, 'FIRA_HEALTH_TELEMETRY', False):
+        telemetry_inputs, telemetry_types = fira_health_telemetry_inputs(cfg)
+        inputs += telemetry_inputs
+        types += telemetry_types
+
     if cfg.HAVE_PERFMON:
         from donkeycar.parts.perfmon import PerfMonitor
         mon = PerfMonitor(cfg)
@@ -643,6 +1053,28 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=meta)
     V.add(tub_writer, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
 
+    if getattr(cfg, 'FIRA_COMPETITION_METRICS', False) and getattr(cfg, 'FIRA_COMPETITION_REPORT_ENABLED', False):
+        from donkeycar.parts.fira_competition_reporter import FiraCompetitionSessionReporter
+
+        V.add(
+            FiraCompetitionSessionReporter(
+                output_dir=tub_path,
+                enabled=cfg.FIRA_COMPETITION_REPORT_ENABLED,
+                min_active_frames=cfg.FIRA_COMPETITION_REPORT_MIN_ACTIVE_FRAMES,
+            ),
+            inputs=[
+                'recording',
+                'user/mode',
+                'fira/competition/right_lane_score',
+                'fira/competition/checkpoint_count',
+                'fira/competition/checkpoint_progress',
+                'fira/competition/lane_violations',
+                'fira/competition/active_frames',
+                'fira/competition/compliance_score',
+                'fira/competition/compliance_ready',
+            ],
+        )
+
     # Telemetry (we add the same metrics added to the TubHandler
     if cfg.HAVE_MQTT_TELEMETRY:
         from donkeycar.parts.telemetry import MqttTelemetry
@@ -658,10 +1090,13 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         V.add(pub, inputs=['jpg/bin'])
 
 
-    if cfg.DONKEY_GYM:
-        print("You can now go to http://localhost:%d to drive your car." % cfg.WEB_CONTROL_PORT)
+    if getattr(cfg, 'WEB_CONTROL_ENABLED', True):
+        if cfg.DONKEY_GYM:
+            print("You can now go to http://localhost:%d to drive your car." % cfg.WEB_CONTROL_PORT)
+        else:
+            print("You can now go to <your hostname.local>:%d to drive your car." % cfg.WEB_CONTROL_PORT)
     else:
-        print("You can now go to <your hostname.local>:%d to drive your car." % cfg.WEB_CONTROL_PORT)
+        print("Web control disabled by configuration (competition mode).")
     if has_input_controller:
         print("You can now move your controller to drive your car.")
         if isinstance(ctr, JoystickController):
@@ -795,11 +1230,38 @@ def add_user_controller(V, cfg, use_joystick, input_image='ui/image_array'):
     # This web controller will create a web server that is capable
     # of managing steering, throttle, and modes, and more.
     #
-    ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
-    V.add(ctr,
-          inputs=[input_image, 'tub/num_records', 'user/mode', 'recording'],
-          outputs=['user/steering', 'user/throttle', 'user/mode', 'recording', 'web/buttons'],
-          threaded=True)
+    ctr = None
+    if getattr(cfg, 'WEB_CONTROL_ENABLED', True):
+        ctr = LocalWebController(
+            port=cfg.WEB_CONTROL_PORT,
+            mode=cfg.WEB_INIT_MODE,
+            webrtc_enabled=getattr(cfg, 'WEBRTC_ENABLED', True),
+            webrtc_ice_servers=getattr(cfg, 'WEBRTC_ICE_SERVERS', []),
+        )
+        V.add(ctr,
+                inputs=web_controller_inputs(cfg, input_image),
+              outputs=['user/steering', 'user/throttle', 'user/mode', 'recording', 'web/buttons'],
+              threaded=True)
+    else:
+        class DisabledWebController:
+            """Fallback controller for competition mode when web control is disabled."""
+
+            def __init__(self, mode):
+                self.mode = mode
+
+            def run(self, *args):
+                return 0.0, 0.0, self.mode, False, {}
+
+            def run_threaded(self, *args):
+                return self.run(*args)
+
+        ctr = DisabledWebController(cfg.WEB_INIT_MODE)
+        V.add(
+            ctr,
+            inputs=web_controller_inputs(cfg, input_image),
+            outputs=['user/steering', 'user/throttle', 'user/mode', 'recording', 'web/buttons'],
+            threaded=False,
+        )
 
     #
     # also add a physical controller if one is configured
@@ -823,13 +1285,19 @@ def add_user_controller(V, cfg, use_joystick, input_image='ui/image_array'):
             # `donkey createjs` command
             #
             if cfg.CONTROLLER_TYPE == "custom":  # custom controller created with `donkey createjs` command
-                from my_joystick import MyJoystickController
-                ctr = MyJoystickController(
-                    throttle_dir=cfg.JOYSTICK_THROTTLE_DIR,
-                    throttle_scale=cfg.JOYSTICK_MAX_THROTTLE,
-                    steering_scale=cfg.JOYSTICK_STEERING_SCALE,
-                    auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
-                ctr.set_deadzone(cfg.JOYSTICK_DEADZONE)
+                try:
+                    custom_controller_module = importlib.import_module('my_joystick')
+                    MyJoystickController = custom_controller_module.MyJoystickController
+                    ctr = MyJoystickController(
+                        throttle_dir=cfg.JOYSTICK_THROTTLE_DIR,
+                        throttle_scale=cfg.JOYSTICK_MAX_THROTTLE,
+                        steering_scale=cfg.JOYSTICK_STEERING_SCALE,
+                        auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
+                    ctr.set_deadzone(cfg.JOYSTICK_DEADZONE)
+                except ImportError:
+                    from donkeycar.parts.controller import get_js_controller
+                    logger.warning('custom joystick module not found; using default joystick controller')
+                    ctr = get_js_controller(cfg)
             elif cfg.CONTROLLER_TYPE == "MM1":
                 from donkeycar.parts.robohat import RoboHATController
                 ctr = RoboHATController(cfg)

@@ -14,7 +14,9 @@ FIRA_TAG_DICT = {
     2: 'TURN_RIGHT',
     3: 'TURN_LEFT',
     4: 'DEAD_END',
-    5: 'TURN_LEFT'
+    5: 'TURN_LEFT',
+    6: 'TUNNEL',
+    7: 'BRIDGE',
 }
 
 AI_THROTTLE_MULT = 1
@@ -28,11 +30,92 @@ FIRA_REQUIRE_ZEBRA = True               # Requiere zebra para ejecutar acción
 FIRA_ZEBRA_DETECTION_HZ = 5          # Frecuencia detección zebra (Hz)
 FIRA_TAG_DETECTION_HZ = 5              # Frecuencia detección de tags (Hz)
 
-FIRA_EJECUTAR_AL_DEJAR_VER_TAG = False    # Ejecutar al dejar de ver el tag
+FIRA_EXECUTE_ON_TAG_LOSS = False    # Execute action when tag is no longer visible
 FIRA_USAR_UNA_SOLA_CAMARA = False           # True: usa solo una cámara
 
 FIRA_TAG_RATIO_THRESHOLD = 26            # Threshold global para detección de proximidad de tag
 FIRA_REESCALAR_TAG_IMG = False             # True si querés forzar el resize
+FIRA_OPENCV_SIGN_FALLBACK = True
+FIRA_OPENCV_SIGN_MIN_CONFIDENCE = 0.55
+FIRA_OPENCV_SIGN_MIN_AREA = 220
+FIRA_OPENCV_SIGN_DEBUG = False
+FIRA_REQUIRE_STOP_LINE = True
+FIRA_STOP_LINE_MIN_DIST_PX = 6
+FIRA_STOP_LINE_MAX_DIST_PX = 18
+
+# FIRA challenge race policy: obstacle avoidance for cars/cones.
+FIRA_CHALLENGE_ENABLED = False
+FIRA_CHALLENGE_DEBUG = False
+FIRA_CHALLENGE_MAX_ABS_STEERING = 1.0
+FIRA_CHALLENGE_MAX_ABS_CORRECTION = 0.70
+FIRA_CHALLENGE_STEERING_GAIN = 0.90
+FIRA_CHALLENGE_MAX_STEERING_DELTA_PER_SEC = 2.0
+FIRA_CHALLENGE_MIN_THROTTLE_FACTOR = 0.45
+
+# Lane corridor estimation.
+FIRA_CHALLENGE_LANE_COLOR_LOW = (18, 70, 70)
+FIRA_CHALLENGE_LANE_COLOR_HIGH = (42, 255, 255)
+FIRA_CHALLENGE_LANE_ROI_TOP_RATIO = 0.45
+FIRA_CHALLENGE_LANE_MIN_PIXEL_RATIO = 0.002
+FIRA_CHALLENGE_LANE_MARGIN_PX = 10
+
+# Obstacle detection by HSV/contours (cars + cones).
+FIRA_CHALLENGE_CAR_COLOR_LOW = (0, 0, 25)
+FIRA_CHALLENGE_CAR_COLOR_HIGH = (179, 95, 185)
+FIRA_CHALLENGE_CONE_COLOR_LOW = (5, 110, 80)
+FIRA_CHALLENGE_CONE_COLOR_HIGH = (25, 255, 255)
+FIRA_CHALLENGE_OBS_ROI_TOP_RATIO = 0.35
+FIRA_CHALLENGE_OBS_ROI_BOTTOM_RATIO = 0.98
+FIRA_CHALLENGE_OBS_MIN_AREA_RATIO = 0.002
+FIRA_CHALLENGE_OBS_FULL_AREA_RATIO = 0.06
+FIRA_CHALLENGE_OBS_MAX_AREA_RATIO = 0.45
+FIRA_CHALLENGE_OBS_MIN_ASPECT = 0.25
+FIRA_CHALLENGE_OBS_MAX_ASPECT = 4.0
+FIRA_CHALLENGE_NEAREST_WEIGHT = 0.70
+FIRA_CHALLENGE_CLEARANCE_PX = 18
+
+# Temporal avoidance behavior for dynamic obstacles.
+FIRA_CHALLENGE_ENGAGE_SEVERITY = 0.12
+FIRA_CHALLENGE_CLEAR_FRAMES = 2
+FIRA_CHALLENGE_RECOVER_FRAMES = 6
+FIRA_CHALLENGE_SMOOTHING_ALPHA = 0.35
+FIRA_CHALLENGE_WARMUP_FRAMES = 0
+FIRA_CHALLENGE_WARMUP_STEERING_GAIN = 0.18
+FIRA_CHALLENGE_WARMUP_MAX_ABS_ANGLE = 0.25
+FIRA_CHALLENGE_WARMUP_THROTTLE = None
+FIRA_CHALLENGE_PREDICTIVE_ENABLED = False
+FIRA_CHALLENGE_PREDICTIVE_HORIZON_SEC = 0.20
+FIRA_CHALLENGE_PREDICTIVE_BLEND = 0.55
+FIRA_CHALLENGE_PREDICTIVE_VELOCITY_ALPHA = 0.45
+FIRA_CHALLENGE_PREDICTIVE_MIN_CONFIDENCE = 0.25
+FIRA_CHALLENGE_PREDICTIVE_MAX_MISSING_FRAMES = 3
+FIRA_CHALLENGE_COLLISION_IMMINENT_ENABLED = True
+FIRA_CHALLENGE_COLLISION_IMMINENT_PROXIMITY = 0.88
+FIRA_CHALLENGE_COLLISION_IMMINENT_OCCUPANCY = 0.42
+FIRA_CHALLENGE_COLLISION_IMMINENT_THROTTLE_CAP = 0.02
+
+# Optional real checkpoint detector (when the stage has visible checkpoint markers).
+FIRA_CHECKPOINT_DETECTOR_ENABLED = False
+FIRA_CHECKPOINT_DEBUG = False
+FIRA_CHECKPOINT_COLOR_LOW = (0, 120, 120)
+FIRA_CHECKPOINT_COLOR_HIGH = (10, 255, 255)
+FIRA_CHECKPOINT_COLOR_LOW_2 = (170, 120, 120)
+FIRA_CHECKPOINT_COLOR_HIGH_2 = (179, 255, 255)
+FIRA_CHECKPOINT_ROI_TOP_RATIO = 0.70
+FIRA_CHECKPOINT_MIN_PIXEL_RATIO = 0.08
+FIRA_CHECKPOINT_COOLDOWN_FRAMES = 12
+
+# Competition compliance telemetry (checkpoint/right-lane proxy metrics).
+FIRA_COMPETITION_METRICS = True
+FIRA_COMPETITION_LANE_CONF_MIN = 0.45
+FIRA_COMPETITION_RIGHT_LANE_ANGLE_MIN = -0.28
+FIRA_COMPETITION_RIGHT_LANE_ANGLE_MAX = 0.08
+FIRA_COMPETITION_CHECKPOINT_MIN_RIGHT_LANE_STREAK = 20
+FIRA_COMPETITION_CHECKPOINT_COOLDOWN_FRAMES = 32
+FIRA_COMPETITION_TARGET_CHECKPOINTS = 12
+FIRA_COMPETITION_COMPLIANCE_SCORE_THRESHOLD = 0.72
+FIRA_COMPETITION_REPORT_ENABLED = True
+FIRA_COMPETITION_REPORT_MIN_ACTIVE_FRAMES = 120
 
 FIRA_CAMERA_TO_FRONT = 0.10
 FIRA_VEHICLE_WIDTH = 0.12
@@ -422,9 +505,15 @@ DEFAULT_AI_FRAMEWORK = 'tensorflow'
 # time. This chooses between different neural network designs. You can
 # override this setting by passing the command line parameter --type to the
 # python manage.py train and drive commands.
-# tensorflow models: (linear|categorical|tflite_linear|tensorrt_linear)
+# tensorflow models:
+# (linear|pilotnet|mlp|categorical|memory|rnn|cnn_lstm|confidence|vit|
+#  world_model|diffusion_policy|inferred|tflite_linear|tensorrt_linear)
 # pytorch models: (resnet18)
 DEFAULT_MODEL_TYPE = 'linear'
+# If backend/model loading fails at startup (for example tensorrt_ on a
+# machine without runtime support), attempt one fallback model type.
+MODEL_LOAD_ENABLE_FALLBACK = True
+MODEL_LOAD_FALLBACK_TYPE = 'linear'
 BATCH_SIZE = 128                #how many records to use when doing one pass of gradient decent. Use a smaller number if your gpu is running out of memory.
 TRAIN_TEST_SPLIT = 0.8          #what percent of records to use for training. the remaining used for validation.
 MAX_EPOCHS = 60                #how many times to visit all records of your data
@@ -455,8 +544,9 @@ PRUNE_EVAL_PERCENT_OF_DATASET = .05  # percent of dataset used to perform evalua
 # - Augmentations are changes to the image that are only applied during
 #   training and are applied randomly to create more variety in the data.
 #   Available augmentations are:
-#   - BRIGHTNESS  - modify the image brightness. See [albumentations](https://albumentations.ai/docs/api_reference/augmentations/transforms/#albumentations.augmentations.transforms.RandomBrightnessContrast)
-#   - BLUR        - blur the image. See [albumentations](https://albumentations.ai/docs/api_reference/augmentations/blur/transforms/#albumentations.augmentations.blur.transforms.Blur)
+#   - BRIGHTNESS      - modify the image brightness. See [albumentations](https://albumentations.ai/docs/api_reference/augmentations/transforms/#albumentations.augmentations.transforms.RandomBrightnessContrast)
+#   - BLUR            - blur the image. See [albumentations](https://albumentations.ai/docs/api_reference/augmentations/blur/transforms/#albumentations.augmentations.blur.transforms.Blur)
+#   - STYLE_TRANSFER  - synthesize lighting and texture variations for robustness
 #
 # - Transformations are changes to the image that apply both in
 #   training and at inference.  They are always applied and in
@@ -539,9 +629,24 @@ PRUNE_EVAL_PERCENT_OF_DATASET = .05  # percent of dataset used to perform evalua
 #           return self.blur.run(image)
 #   ```
 #
+# Robustez ante reflejos/glare en pista.
+GLARE_MASK = False
+GLARE_MASK_SAT_LOW = 80
+GLARE_MASK_VAL_HIGH = 240
+GLARE_MASK_FILL_WITH = 'mean'
+GLARE_MASK_MORPH_KERNEL = 3
+GLARE_MASK_MORPH_ITERATIONS = 1
+
+# Robustez por style transfer sintético en entrenamiento.
+AUG_STYLE_TRANSFER = False
+AUG_STYLE_TRANSFER_PRESET = 'random'
+AUG_STYLE_TRANSFER_BLEND = 0.35
+
 AUGMENTATIONS = []         # changes to image only applied in training to create
                            # more variety in the data.
-TRANSFORMATIONS = []       # changes applied _before_ training augmentations,
+if AUG_STYLE_TRANSFER:
+    AUGMENTATIONS.append('STYLE_TRANSFER')
+TRANSFORMATIONS = ['GLARE_MASK'] if GLARE_MASK else []       # changes applied _before_ training augmentations,
                            # such that augmentations are applied to the transformed image,
 POST_TRANSFORMATIONS = []  # transformations applied _after_ training augmentations,
                            # such that changes are applied to the augmented image
@@ -614,6 +719,9 @@ NUM_LAST_LAYERS_TO_TRAIN = 7        #when freezing layers, how many layers from 
 #WEB CONTROL
 WEB_CONTROL_PORT = int(os.getenv("WEB_CONTROL_PORT", 8887))  # which port to listen on when making a web controller
 WEB_INIT_MODE = "user"              # which control mode to start in. one of user|local_angle|local. Setting local will start in ai mode.
+WEB_CONTROL_ENABLED = os.getenv("WEB_CONTROL_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+WEBRTC_ENABLED = os.getenv("WEBRTC_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+WEBRTC_ICE_SERVERS = []             # optional STUN/TURN list, e.g. [{"urls":"stun:stun.l.google.com:19302"}]
 
 #JOYSTICK
 USE_JOYSTICK_AS_DEFAULT = False      #when starting the manage.py, when True, will not require a --js option to use the joystick
@@ -632,6 +740,11 @@ JOYSTICK_DEVICE_FILE = "/dev/input/js0" # this is the unix file use to access th
 #it's very IMPORTANT that this value is matched from the training PC config.py and the robot.py
 #and ideally wouldn't change once set.
 MODEL_CATEGORICAL_MAX_THROTTLE_RANGE = 0.13
+
+# Confidence model fallback threshold.
+# If model type is confidence and predicted confidence is below this value,
+# pilot output is neutralized.
+CONFIDENCE_THRESHOLD = 0.5
 
 #RNN or 3D
 SEQUENCE_LENGTH = 3             #some models use a number of images over time. This controls how many.
@@ -810,6 +923,8 @@ FIRA_ENGINE_YOLO = False
 FIRA_MODEL_NAME = 'yolov8-trained.pt'
 FIRA_YOLO_HZ = 15
 FIRA_YOLO_CLASSES = ['End', 'Forward', 'Left', 'No_entry', 'Right', 'Stop']
+FIRA_YOLO_DISABLE_AFTER_ERRORS = 5
+FIRA_HEALTH_TELEMETRY = False
 FIRA_DEBUG_VISUALS = False
 FIRA_DEBUG = True
 
@@ -818,5 +933,92 @@ FIRA_ENGINE_TF = False
 FIRA_TF_MODEL_NAME = 'best_saved_model_resize/best_float16.tflite'
 FIRA_TF_HZ = 15
 FIRA_TF_CLASSES = {1: 'Stop', 2: 'No_entry', 3: 'End', 4: 'Left', 5: 'Right', 6: 'Forward'} 
+FIRA_TF_DISABLE_AFTER_ERRORS = 5
 FIRA_TF_DEBUG_VISUALS = True
 FIRA_TF_DEBUG = False
+
+# FIRA safety arbiter
+FIRA_SAFETY_ARBITER = True
+FIRA_SAFETY_MAX_ABS_STEERING = 1.0
+FIRA_SAFETY_THROTTLE_MIN = 0.0
+FIRA_SAFETY_THROTTLE_MAX = 1.0
+FIRA_SAFETY_CURVE_START = 0.25
+FIRA_SAFETY_CURVE_FULL = 0.9
+FIRA_SAFETY_CURVE_FACTOR_MIN = 0.6
+FIRA_SAFETY_FAILSAFE_THROTTLE_CAP = 0.08
+FIRA_SAFETY_SEVERE_FAILSAFE_THROTTLE_CAP = 0.04
+FIRA_SAFETY_USE_YOLO_FAILSAFE = False
+FIRA_SAFETY_USE_TF_FAILSAFE = False
+FIRA_SAFETY_MAX_STEERING_DELTA_PER_SEC = 2.0
+FIRA_SAFETY_MAX_THROTTLE_DELTA_PER_SEC = 0.8
+FIRA_SAFETY_USE_LANE_GUIDANCE = True
+FIRA_SAFETY_LANE_CONFIDENCE_MIN = 0.35
+FIRA_SAFETY_LANE_BLEND_MAX = 0.7
+FIRA_SAFETY_LANE_ANGLE_MAX_ABS = 1.0
+FIRA_SAFETY_USE_OBSTACLE_CORRECTION = True
+FIRA_SAFETY_OBSTACLE_CORRECTION_MAX_ABS = 1.0
+FIRA_SAFETY_OBSTACLE_BLEND_MAX = 1.0
+FIRA_SAFETY_OBSTACLE_THROTTLE_FACTOR_MIN = 0.45
+FIRA_SAFETY_SIGNAL_ESTIMATOR = True
+FIRA_SAFETY_SIGNAL_LANE_ENABLED = True
+FIRA_SAFETY_SIGNAL_LANE_ROI_TOP_RATIO = 0.45
+FIRA_SAFETY_SIGNAL_LANE_COLOR_LOW = (18, 70, 70)
+FIRA_SAFETY_SIGNAL_LANE_COLOR_HIGH = (42, 255, 255)
+FIRA_SAFETY_SIGNAL_LANE_MIN_PIXEL_RATIO = 0.003
+FIRA_SAFETY_SIGNAL_LANE_FULL_PIXEL_RATIO = 0.04
+FIRA_SAFETY_SIGNAL_LANE_STEERING_GAIN = 1.0
+FIRA_SAFETY_SIGNAL_OBSTACLE_ENABLED = True
+FIRA_SAFETY_SIGNAL_OBSTACLE_ROI_TOP_RATIO = 0.45
+FIRA_SAFETY_SIGNAL_OBSTACLE_ROI_BOTTOM_RATIO = 0.95
+FIRA_SAFETY_SIGNAL_OBSTACLE_CENTER_BAND_RATIO = 0.85
+FIRA_SAFETY_SIGNAL_OBSTACLE_COLOR_LOW = (5, 90, 90)
+FIRA_SAFETY_SIGNAL_OBSTACLE_COLOR_HIGH = (24, 255, 255)
+FIRA_SAFETY_SIGNAL_OBSTACLE_MIN_PIXEL_RATIO = 0.002
+FIRA_SAFETY_SIGNAL_OBSTACLE_FULL_PIXEL_RATIO = 0.03
+FIRA_SAFETY_SIGNAL_OBSTACLE_LANE_CHANGE_ENABLED = True
+FIRA_SAFETY_SIGNAL_OBSTACLE_ENGAGE_SEVERITY = 0.28
+FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_CORRECTION = 0.24
+FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_SEVERITY = 0.38
+FIRA_SAFETY_SIGNAL_OBSTACLE_CLEAR_FRAMES = 2
+FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_FRAMES = 6
+FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MAX_CORRECTION = 0.15
+FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MIN_SEVERITY = 0.20
+FIRA_SAFETY_SIGNAL_REDUCE_ON_DETECTOR_DOWN = True
+FIRA_SAFETY_SIGNAL_DETECTOR_DOWN_SCALE = 0.5
+FIRA_SAFETY_SIGNAL_ENABLE_TEMPORAL_SMOOTHING = True
+FIRA_SAFETY_SIGNAL_SMOOTHING_ALPHA = 0.35
+FIRA_SAFETY_SIGNAL_DEBUG = False
+FIRA_SAFETY_DEBUG = False
+
+# Runtime profile scheduler (automatic SAFE/RACE/TIGHT switching).
+FIRA_PROFILE_SCHEDULER_ENABLED = False
+FIRA_PROFILE_SCHEDULER_MIN_DWELL_FRAMES = 12
+FIRA_PROFILE_SCHEDULER_LOW_LANE_CONF_TO_SAFE = 0.25
+FIRA_PROFILE_SCHEDULER_RACE_ENTER_SEVERITY = 0.30
+FIRA_PROFILE_SCHEDULER_RACE_EXIT_SEVERITY = 0.18
+FIRA_PROFILE_SCHEDULER_TIGHT_ENTER_SEVERITY = 0.60
+FIRA_PROFILE_SCHEDULER_TIGHT_EXIT_SEVERITY = 0.45
+FIRA_PROFILE_SCHEDULER_DEBUG = False
+
+# Urban cone handling profile. Options: SAFE | RACE | TIGHT
+# SAFE: smoother, more conservative lane change and return.
+# RACE: earlier and stronger evasive response.
+# TIGHT: aggressive slalom profile for tightly spaced cones.
+FIRA_SAFETY_URBAN_CONE_PROFILE = 'SAFE'
+
+if FIRA_SAFETY_URBAN_CONE_PROFILE.upper() == 'RACE':
+    FIRA_SAFETY_SIGNAL_OBSTACLE_ENGAGE_SEVERITY = 0.24
+    FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_CORRECTION = 0.30
+    FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_SEVERITY = 0.44
+    FIRA_SAFETY_SIGNAL_OBSTACLE_CLEAR_FRAMES = 2
+    FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_FRAMES = 7
+    FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MAX_CORRECTION = 0.14
+    FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MIN_SEVERITY = 0.17
+elif FIRA_SAFETY_URBAN_CONE_PROFILE.upper() == 'TIGHT':
+    FIRA_SAFETY_SIGNAL_OBSTACLE_ENGAGE_SEVERITY = 0.20
+    FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_CORRECTION = 0.34
+    FIRA_SAFETY_SIGNAL_OBSTACLE_AVOID_MIN_SEVERITY = 0.46
+    FIRA_SAFETY_SIGNAL_OBSTACLE_CLEAR_FRAMES = 1
+    FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_FRAMES = 4
+    FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MAX_CORRECTION = 0.22
+    FIRA_SAFETY_SIGNAL_OBSTACLE_RECOVER_MIN_SEVERITY = 0.15

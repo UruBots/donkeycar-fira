@@ -59,6 +59,7 @@ def drive(cfg, model_path=None):
     kl = KerasCategorical()
     if model_path:
         kl.load(model_path)
+        dk.utils.apply_model_metadata(cfg, dk.utils.read_model_metadata(model_path))
 
     V.add(kl, inputs=['cam/image_array'],
           outputs=['pilot/angle', 'pilot/throttle'],

@@ -25,7 +25,49 @@ from socket import gethostname
 
 from ... import utils
 
+try:
+    from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, \
+        RTCConfiguration, RTCIceServer
+    from av import VideoFrame
+    WEBRTC_AVAILABLE = True
+except ImportError:
+    RTCPeerConnection = None
+    RTCSessionDescription = None
+    VideoStreamTrack = object
+    RTCConfiguration = None
+    RTCIceServer = None
+    VideoFrame = None
+    WEBRTC_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+
+class DonkeyVideoStreamTrack(VideoStreamTrack):
+    """Stream the latest frame from LocalWebController to a WebRTC peer."""
+
+    def __init__(self, app):
+        super().__init__()
+        self._app = app
+
+    async def recv(self):
+        if not WEBRTC_AVAILABLE:
+            raise RuntimeError("WebRTC dependencies are not installed")
+
+        pts, time_base = await self.next_timestamp()
+        frame_arr = getattr(self._app, 'img_arr', None)
+        if frame_arr is None:
+            await asyncio.sleep(0.03)
+            frame_arr = utils.load_image_sized(
+                os.path.join(self._app.static_file_path, "img_placeholder.jpg"),
+                160,
+                120,
+                3,
+            )
+
+        frame = VideoFrame.from_ndarray(frame_arr, format="rgb24")
+        frame.pts = pts
+        frame.time_base = time_base
+        return frame
 
 
 class RemoteWebServer():
@@ -101,7 +143,8 @@ class RemoteWebServer():
 
 class LocalWebController(tornado.web.Application):
 
-    def __init__(self, port=8887, mode='user'):
+    def __init__(self, port=8887, mode='user', webrtc_enabled=True,
+                 webrtc_ice_servers=None):
         """
         Create and publish variables needed on many of
         the web handlers.
@@ -117,12 +160,33 @@ class LocalWebController(tornado.web.Application):
         self.recording = False
         self.recording_latch = None
         self.buttons = {}  # latched button values for processing
+        self.webrtc_enabled = bool(webrtc_enabled)
+        self.webrtc_ice_servers = list(webrtc_ice_servers or [])
 
         self.port = port
 
         self.num_records = 0
         self.wsclients = []
+        self.webrtc_peers = set()
         self.loop = None
+
+        # Optional FIRA telemetry values shown in the web UI.
+        self.fira_obstacle_severity = 0.0
+        self.fira_lane_confidence = 0.0
+        self.fira_safety_failsafe_active = False
+        self.fira_safety_lane_weight = 0.0
+        self.fira_safety_obstacle_weight = 0.0
+        self.fira_safety_curve_factor = 1.0
+        self.fira_safety_speed_limit_factor = 1.0
+        self.fira_drive_state = "IDLE"
+        self.fira_drive_state_throttle_cap = 1.0
+        self.fira_competition_right_lane_score = 0.0
+        self.fira_competition_checkpoint_count = 0
+        self.fira_competition_checkpoint_progress = 0.0
+        self.fira_competition_lane_violations = 0
+        self.fira_competition_active_frames = 0
+        self.fira_competition_compliance_score = 0.0
+        self.fira_competition_compliance_ready = False
 
 
         handlers = [
@@ -132,6 +196,9 @@ class LocalWebController(tornado.web.Application):
             (r"/wsCalibrate", WebSocketCalibrateAPI),
             (r"/calibrate", CalibrateHandler),
             (r"/video", VideoAPI),
+            (r"/webrtc/config", WebRTCConfigAPI),
+            (r"/webrtc/health", WebRTCHealthAPI),
+            (r"/webrtc/offer", WebRTCOfferAPI),
             (r"/wsTest", WsTest),
 
             (r"/static/(.*)", StaticFileHandler,
@@ -162,7 +229,36 @@ class LocalWebController(tornado.web.Application):
                                    exc_info=e)
                     pass
 
-    def run_threaded(self, img_arr=None, num_records=0, mode=None, recording=None):
+    @staticmethod
+    def _as_float(value, default=0.0):
+        try:
+            if value is None:
+                return default
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def run_threaded(self,
+                     img_arr=None,
+                     num_records=0,
+                     mode=None,
+                     recording=None,
+                     fira_obstacle_severity=None,
+                     fira_lane_confidence=None,
+                     fira_safety_failsafe_active=None,
+                     fira_safety_lane_weight=None,
+                     fira_safety_obstacle_weight=None,
+                     fira_safety_curve_factor=None,
+                     fira_safety_speed_limit_factor=None,
+                     fira_drive_state=None,
+                     fira_drive_state_throttle_cap=None,
+                     fira_competition_right_lane_score=None,
+                     fira_competition_checkpoint_count=None,
+                     fira_competition_checkpoint_progress=None,
+                     fira_competition_lane_violations=None,
+                     fira_competition_active_frames=None,
+                     fira_competition_compliance_score=None,
+                     fira_competition_compliance_ready=None):
         """
         :param img_arr: current camera image or None
         :param num_records: current number of data records
@@ -191,6 +287,87 @@ class LocalWebController(tornado.web.Application):
             self.recording_latch = None;
             changes["recording"] = self.recording;
 
+        if fira_obstacle_severity is not None:
+            value = self._as_float(fira_obstacle_severity, 0.0)
+            if self.fira_obstacle_severity != value:
+                self.fira_obstacle_severity = value
+                changes["firaObstacleSeverity"] = value
+        if fira_lane_confidence is not None:
+            value = self._as_float(fira_lane_confidence, 0.0)
+            if self.fira_lane_confidence != value:
+                self.fira_lane_confidence = value
+                changes["firaLaneConfidence"] = value
+        if fira_safety_failsafe_active is not None:
+            value = bool(fira_safety_failsafe_active)
+            if self.fira_safety_failsafe_active != value:
+                self.fira_safety_failsafe_active = value
+                changes["firaFailsafeActive"] = value
+        if fira_safety_lane_weight is not None:
+            value = self._as_float(fira_safety_lane_weight, 0.0)
+            if self.fira_safety_lane_weight != value:
+                self.fira_safety_lane_weight = value
+                changes["firaLaneWeight"] = value
+        if fira_safety_obstacle_weight is not None:
+            value = self._as_float(fira_safety_obstacle_weight, 0.0)
+            if self.fira_safety_obstacle_weight != value:
+                self.fira_safety_obstacle_weight = value
+                changes["firaObstacleWeight"] = value
+        if fira_safety_curve_factor is not None:
+            value = self._as_float(fira_safety_curve_factor, 1.0)
+            if self.fira_safety_curve_factor != value:
+                self.fira_safety_curve_factor = value
+                changes["firaCurveFactor"] = value
+        if fira_safety_speed_limit_factor is not None:
+            value = self._as_float(fira_safety_speed_limit_factor, 1.0)
+            if self.fira_safety_speed_limit_factor != value:
+                self.fira_safety_speed_limit_factor = value
+                changes["firaSpeedLimitFactor"] = value
+        if fira_drive_state is not None:
+            value = str(fira_drive_state)
+            if self.fira_drive_state != value:
+                self.fira_drive_state = value
+                changes["firaDriveState"] = value
+        if fira_drive_state_throttle_cap is not None:
+            value = self._as_float(fira_drive_state_throttle_cap, 1.0)
+            if self.fira_drive_state_throttle_cap != value:
+                self.fira_drive_state_throttle_cap = value
+                changes["firaDriveStateThrottleCap"] = value
+        if fira_competition_right_lane_score is not None:
+            value = self._as_float(fira_competition_right_lane_score, 0.0)
+            if self.fira_competition_right_lane_score != value:
+                self.fira_competition_right_lane_score = value
+                changes["firaCompetitionRightLaneScore"] = value
+        if fira_competition_checkpoint_count is not None:
+            value = int(self._as_float(fira_competition_checkpoint_count, 0.0))
+            if self.fira_competition_checkpoint_count != value:
+                self.fira_competition_checkpoint_count = value
+                changes["firaCompetitionCheckpointCount"] = value
+        if fira_competition_checkpoint_progress is not None:
+            value = self._as_float(fira_competition_checkpoint_progress, 0.0)
+            if self.fira_competition_checkpoint_progress != value:
+                self.fira_competition_checkpoint_progress = value
+                changes["firaCompetitionCheckpointProgress"] = value
+        if fira_competition_lane_violations is not None:
+            value = int(self._as_float(fira_competition_lane_violations, 0.0))
+            if self.fira_competition_lane_violations != value:
+                self.fira_competition_lane_violations = value
+                changes["firaCompetitionLaneViolations"] = value
+        if fira_competition_active_frames is not None:
+            value = int(self._as_float(fira_competition_active_frames, 0.0))
+            if self.fira_competition_active_frames != value:
+                self.fira_competition_active_frames = value
+                changes["firaCompetitionActiveFrames"] = value
+        if fira_competition_compliance_score is not None:
+            value = self._as_float(fira_competition_compliance_score, 0.0)
+            if self.fira_competition_compliance_score != value:
+                self.fira_competition_compliance_score = value
+                changes["firaCompetitionComplianceScore"] = value
+        if fira_competition_compliance_ready is not None:
+            value = bool(fira_competition_compliance_ready)
+            if self.fira_competition_compliance_ready != value:
+                self.fira_competition_compliance_ready = value
+                changes["firaCompetitionComplianceReady"] = value
+
         # Send record count to websocket clients
         if (self.num_records is not None and self.recording is True):
             if self.num_records % 10 == 0:
@@ -213,8 +390,49 @@ class LocalWebController(tornado.web.Application):
 
         return self.angle, self.throttle, self.mode, self.recording, buttons
 
-    def run(self, img_arr=None, num_records=0, mode=None, recording=None):
-        return self.run_threaded(img_arr, num_records, mode, recording)
+    def run(self,
+            img_arr=None,
+            num_records=0,
+            mode=None,
+            recording=None,
+            fira_obstacle_severity=None,
+            fira_lane_confidence=None,
+            fira_safety_failsafe_active=None,
+            fira_safety_lane_weight=None,
+            fira_safety_obstacle_weight=None,
+            fira_safety_curve_factor=None,
+            fira_safety_speed_limit_factor=None,
+            fira_drive_state=None,
+            fira_drive_state_throttle_cap=None,
+            fira_competition_right_lane_score=None,
+            fira_competition_checkpoint_count=None,
+            fira_competition_checkpoint_progress=None,
+            fira_competition_lane_violations=None,
+            fira_competition_active_frames=None,
+            fira_competition_compliance_score=None,
+            fira_competition_compliance_ready=None):
+        return self.run_threaded(
+            img_arr,
+            num_records,
+            mode,
+            recording,
+            fira_obstacle_severity,
+            fira_lane_confidence,
+            fira_safety_failsafe_active,
+            fira_safety_lane_weight,
+            fira_safety_obstacle_weight,
+            fira_safety_curve_factor,
+            fira_safety_speed_limit_factor,
+            fira_drive_state,
+            fira_drive_state_throttle_cap,
+            fira_competition_right_lane_score,
+            fira_competition_checkpoint_count,
+            fira_competition_checkpoint_progress,
+            fira_competition_lane_violations,
+            fira_competition_active_frames,
+            fira_competition_compliance_score,
+            fira_competition_compliance_ready,
+        )
 
     def shutdown(self):
         pass
@@ -389,6 +607,103 @@ class VideoAPI(RequestHandler):
                     pass
             else:
                 await tornado.gen.sleep(interval)
+
+
+class WebRTCOfferAPI(RequestHandler):
+    """Accept a browser WebRTC offer and return SDP answer."""
+
+    @staticmethod
+    def _build_rtc_configuration(ice_servers):
+        if not WEBRTC_AVAILABLE:
+            return None
+
+        rtc_servers = []
+        for item in ice_servers or []:
+            if isinstance(item, str) and item:
+                rtc_servers.append(RTCIceServer(urls=item))
+                continue
+            if isinstance(item, dict) and item.get('urls'):
+                kwargs = {'urls': item['urls']}
+                if item.get('username') is not None:
+                    kwargs['username'] = item['username']
+                if item.get('credential') is not None:
+                    kwargs['credential'] = item['credential']
+                rtc_servers.append(RTCIceServer(**kwargs))
+
+        if not rtc_servers:
+            return None
+        return RTCConfiguration(iceServers=rtc_servers)
+
+    async def post(self):
+        if not WEBRTC_AVAILABLE:
+            self.set_status(501)
+            self.write({
+                "error": "WebRTC dependencies missing. Install donkeycar[webrtc]."
+            })
+            return
+        if not bool(getattr(self.application, 'webrtc_enabled', True)):
+            self.set_status(403)
+            self.write({"error": "WebRTC is disabled in configuration"})
+            return
+
+        payload = tornado.escape.json_decode(self.request.body)
+        if not isinstance(payload, dict) or 'sdp' not in payload or 'type' not in payload:
+            self.set_status(400)
+            self.write({"error": "Invalid offer payload"})
+            return
+
+        rtc_config = self._build_rtc_configuration(
+            getattr(self.application, 'webrtc_ice_servers', [])
+        )
+        if rtc_config is None:
+            pc = RTCPeerConnection()
+        else:
+            pc = RTCPeerConnection(configuration=rtc_config)
+        self.application.webrtc_peers.add(pc)
+
+        @pc.on("connectionstatechange")
+        async def on_connectionstatechange():
+            if pc.connectionState in ("failed", "closed", "disconnected"):
+                await pc.close()
+                self.application.webrtc_peers.discard(pc)
+
+        pc.addTrack(DonkeyVideoStreamTrack(self.application))
+        offer = RTCSessionDescription(sdp=payload['sdp'], type=payload['type'])
+        await pc.setRemoteDescription(offer)
+        answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+
+        self.set_header("Content-Type", "application/json")
+        self.write({
+            "sdp": pc.localDescription.sdp,
+            "type": pc.localDescription.type,
+        })
+
+
+class WebRTCConfigAPI(RequestHandler):
+    """Expose browser WebRTC transport configuration."""
+
+    def get(self):
+        enabled = bool(getattr(self.application, 'webrtc_enabled', True))
+        ice_servers = getattr(self.application, 'webrtc_ice_servers', []) or []
+        self.set_header("Content-Type", "application/json")
+        self.write({
+            "enabled": enabled,
+            "available": bool(WEBRTC_AVAILABLE),
+            "iceServers": ice_servers,
+        })
+
+
+class WebRTCHealthAPI(RequestHandler):
+    """Simple status endpoint to validate WebRTC runtime state."""
+
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({
+            "enabled": bool(getattr(self.application, 'webrtc_enabled', True)),
+            "available": bool(WEBRTC_AVAILABLE),
+            "activePeers": len(getattr(self.application, 'webrtc_peers', [])),
+        })
 
 
 class BaseHandler(RequestHandler):

@@ -79,5 +79,9 @@ V.add(tub, inputs=['image'], outputs=['num_records'])
 V.start(rate_hz=10)
 ```
 
+### FIRA Competition Support
+
+This repository includes comprehensive support for the FIRA Challenge (2025) autonomous cars competition. For details on the OpenCV-based traffic sign detection fallback and its robustness testing coverage, see [docs/fira-opencv-robustness-matrix.md](docs/fira-opencv-robustness-matrix.md).
+
 See [home page](http://donkeycar.com), [docs](http://docs.donkeycar.com)
 or join the [Discord server](http://www.donkeycar.com/community.html) to learn more.

@@ -1,4 +1,5 @@
 import argparse
+import importlib
 import os
 import shutil
 import socket
@@ -6,7 +7,6 @@ import stat
 import sys
 import logging
 
-from progress.bar import IncrementalBar
 import donkeycar as dk
 from donkeycar.management.joystick_creator import CreateJoystick
 
@@ -47,6 +47,17 @@ def load_config(config_path, myconfig='myconfig.py'):
 
 class BaseCommand(object):
     pass
+
+
+class _NullProgressBar:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def next(self):
+        pass
+
+    def finish(self):
+        pass
 
 
 class CreateCar(BaseCommand):
@@ -446,6 +457,11 @@ class ShowPredictionPlots(BaseCommand):
         import pandas as pd
         from pathlib import Path
         from donkeycar.pipeline.types import TubDataset
+        try:
+            progress_module = importlib.import_module('progress.bar')
+            IncrementalBar = progress_module.IncrementalBar
+        except Exception:
+            IncrementalBar = _NullProgressBar
 
         model_path = os.path.expanduser(model_path)
         model = dk.utils.get_model_by_type(model_type, cfg)
@@ -546,6 +562,19 @@ class Train(BaseCommand):
         parser.add_argument('--comment', type=str,
                             help='comment added to model database - use '
                                  'double quotes for multiple words')
+        parser.add_argument('--mask-glare', dest='mask_glare', action='store_true',
+                    help='enable glare masking augmentation during training')
+        parser.add_argument('--no-mask-glare', dest='mask_glare', action='store_false',
+                    help='disable glare masking augmentation during training')
+        parser.add_argument('--style-transfer', dest='style_transfer', action='store_true',
+                    help='enable style-transfer augmentation during training')
+        parser.add_argument('--no-style-transfer', dest='style_transfer', action='store_false',
+                    help='disable style-transfer augmentation during training')
+        parser.add_argument('--style-transfer-preset', default=None,
+                    help='style-transfer preset to use when enabled')
+        parser.add_argument('--style-transfer-blend', type=float, default=None,
+                    help='blend factor for style-transfer augmentation')
+        parser.set_defaults(mask_glare=None, style_transfer=None)
         parsed_args = parser.parse_args(args)
         return parsed_args
 
@@ -560,7 +589,10 @@ class Train(BaseCommand):
         if framework == 'tensorflow':
             from donkeycar.pipeline.training import train
             train(cfg, args.tub, args.model, args.type, args.transfer,
-                  args.comment)
+                  args.comment, mask_glare=args.mask_glare,
+                  style_transfer=args.style_transfer,
+                  style_transfer_preset=args.style_transfer_preset,
+                  style_transfer_blend=args.style_transfer_blend)
         elif framework == 'pytorch':
             from donkeycar.parts.pytorch.torch_train import train
             train(cfg, args.tub, args.model, args.type,

@@ -21,6 +21,22 @@ var driveHandler = new function() {
         'controlMode': 'joystick',
         'maxThrottle' : 1,
         'throttleMode' : 'user',
+        'firaObstacleSeverity': 0,
+        'firaLaneConfidence': 0,
+        'firaFailsafeActive': false,
+        'firaLaneWeight': 0,
+        'firaObstacleWeight': 0,
+        'firaCurveFactor': 1,
+        'firaSpeedLimitFactor': 1,
+        'firaDriveState': 'IDLE',
+        'firaDriveStateThrottleCap': 1,
+        'firaCompetitionRightLaneScore': 0,
+        'firaCompetitionCheckpointCount': 0,
+        'firaCompetitionCheckpointProgress': 0,
+        'firaCompetitionLaneViolations': 0,
+        'firaCompetitionActiveFrames': 0,
+        'firaCompetitionComplianceScore': 0,
+        'firaCompetitionComplianceReady': false,
         'buttons': {
             "w1": false,  // boolean; true is 'down' or pushed, false is 'up' or not pushed
             "w2": false,
@@ -41,10 +57,12 @@ var driveHandler = new function() {
     var vehicle_id = ""
     var driveURL = ""
     var socket
+    var webrtcPeer = null
 
     this.load = function() {
       driveURL = '/drive'
       socket = new WebSocket('ws://' + location.host + '/wsDrive');
+      startWebRtcVideo();
 
       setBindings()
 
@@ -76,6 +94,101 @@ var driveHandler = new function() {
         state.controlMode = 'joystick';
       }
     };
+
+    var setVideoTransportStatus = function(text, labelClass) {
+      var badge = $('#video_transport_badge');
+      if (!badge.length) {
+        return;
+      }
+      badge.removeClass('label-default label-success label-warning label-danger');
+      badge.addClass(labelClass || 'label-default');
+      badge.text(text);
+    }
+
+    var showWebRtcVideo = function(stream) {
+      var video = document.getElementById('webrtc-video');
+      if (!video) {
+        return;
+      }
+      video.srcObject = stream;
+      $('#webrtc-video').show();
+      $('#mpeg-image').hide();
+      setVideoTransportStatus('WebRTC', 'label-success');
+    }
+
+    var showMjpegVideo = function() {
+      if (webrtcPeer) {
+        webrtcPeer.close();
+        webrtcPeer = null;
+      }
+      $('#webrtc-video').hide();
+      $('#mpeg-image').show();
+      setVideoTransportStatus('MJPEG fallback', 'label-warning');
+    }
+
+    var startWebRtcVideo = async function() {
+      if (!window.RTCPeerConnection) {
+        showMjpegVideo();
+        return;
+      }
+
+      try {
+        var rtcConfigResp = await fetch('/webrtc/config');
+        if (!rtcConfigResp.ok) {
+          throw new Error('webrtc config unavailable: ' + rtcConfigResp.status);
+        }
+        var rtcConfig = await rtcConfigResp.json();
+        if (!rtcConfig.available || !rtcConfig.enabled) {
+          showMjpegVideo();
+          return;
+        }
+
+        webrtcPeer = new RTCPeerConnection({
+          iceServers: rtcConfig.iceServers || []
+        });
+        setVideoTransportStatus('Negotiating...', 'label-default');
+
+        webrtcPeer.ontrack = function(evt) {
+          if (evt.streams && evt.streams.length > 0) {
+            showWebRtcVideo(evt.streams[0]);
+          }
+        };
+
+        webrtcPeer.onconnectionstatechange = function() {
+          if (!webrtcPeer) {
+            return;
+          }
+          if (webrtcPeer.connectionState === 'failed' ||
+              webrtcPeer.connectionState === 'disconnected' ||
+              webrtcPeer.connectionState === 'closed') {
+            showMjpegVideo();
+          }
+        };
+
+        webrtcPeer.addTransceiver('video', {direction: 'recvonly'});
+        var offer = await webrtcPeer.createOffer();
+        await webrtcPeer.setLocalDescription(offer);
+
+        var response = await fetch('/webrtc/offer', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            sdp: webrtcPeer.localDescription.sdp,
+            type: webrtcPeer.localDescription.type
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('webrtc offer rejected: ' + response.status);
+        }
+
+        var answer = await response.json();
+        await webrtcPeer.setRemoteDescription(answer);
+      } catch (err) {
+        console.warn('WebRTC unavailable, using MJPEG stream', err);
+        showMjpegVideo();
+      }
+    }
 
     //
     // Update a state object with the given data.
@@ -314,6 +427,44 @@ var driveHandler = new function() {
       } else {
         $('#tilt-toggle').removeClass("active");
         $('#tilt').removeAttr("checked")
+      }
+
+      var firaObstaclePercent = Math.round(Math.max(0, Math.min(1, state.firaObstacleSeverity)) * 100);
+      var firaLanePercent = Math.round(Math.max(0, Math.min(1, state.firaLaneConfidence)) * 100);
+      var firaLaneWeightPercent = Math.round(Math.max(0, Math.min(1, state.firaLaneWeight)) * 100);
+      var firaObstacleWeightPercent = Math.round(Math.max(0, Math.min(1, state.firaObstacleWeight)) * 100);
+      var firaRightLanePercent = Math.round(Math.max(0, Math.min(1, state.firaCompetitionRightLaneScore)) * 100);
+      var firaCheckpointProgressPercent = Math.round(Math.max(0, Math.min(1, state.firaCompetitionCheckpointProgress)) * 100);
+
+      $('#fira_obstacle_label').text(state.firaObstacleSeverity.toFixed(2));
+      $('#fira_lane_label').text(state.firaLaneConfidence.toFixed(2));
+      $('#fira_curve_label').text(state.firaCurveFactor.toFixed(2));
+      $('#fira_speed_factor_label').text(state.firaSpeedLimitFactor.toFixed(2));
+      $('#fira_drive_cap_label').text(state.firaDriveStateThrottleCap.toFixed(2));
+      $('#fira_drive_state').text(state.firaDriveState || 'IDLE');
+      $('#fira_right_lane_label').text(state.firaCompetitionRightLaneScore.toFixed(2));
+      $('#fira_checkpoint_count_label').text(String(state.firaCompetitionCheckpointCount));
+      $('#fira_lane_violations_label').text(String(state.firaCompetitionLaneViolations));
+      $('#fira_active_frames_label').text(String(state.firaCompetitionActiveFrames));
+      $('#fira_compliance_score_label').text(state.firaCompetitionComplianceScore.toFixed(2));
+
+      $('#fira_obstacle_bar').css('width', firaObstaclePercent + '%').text(firaObstaclePercent + '%');
+      $('#fira_lane_bar').css('width', firaLanePercent + '%').text(firaLanePercent + '%');
+      $('#fira_lane_weight_bar').css('width', firaLaneWeightPercent + '%').text(firaLaneWeightPercent + '%');
+      $('#fira_obstacle_weight_bar').css('width', firaObstacleWeightPercent + '%').text(firaObstacleWeightPercent + '%');
+      $('#fira_right_lane_bar').css('width', firaRightLanePercent + '%').text(firaRightLanePercent + '%');
+      $('#fira_checkpoint_progress_bar').css('width', firaCheckpointProgressPercent + '%').text(firaCheckpointProgressPercent + '%');
+
+      if (state.firaCompetitionComplianceReady) {
+        $('#fira_compliance_badge').text('READY').removeClass('label-default label-warning').addClass('label-success');
+      } else {
+        $('#fira_compliance_badge').text('NOT READY').removeClass('label-success').addClass('label-warning');
+      }
+
+      if (state.firaFailsafeActive) {
+        $('#fira_failsafe_badge').text('ACTIVE').removeClass('label-success').addClass('label-danger');
+      } else {
+        $('#fira_failsafe_badge').text('OFF').removeClass('label-danger').addClass('label-success');
       }
 
       //drawLine(state.tele.user.angle, state.tele.user.throttle)

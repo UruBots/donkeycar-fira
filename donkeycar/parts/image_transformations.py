@@ -79,6 +79,14 @@ def image_transformer(name: str, config):
         return cv_parts.ImgHSV2RGB()
     elif "BGR2HSV" == name:
         return cv_parts.ImgBGR2HSV()
+    elif "GLARE_MASK" == name:
+        return cv_parts.ImgGlareMask(
+            getattr(config, 'GLARE_MASK_SAT_LOW', 80),
+            getattr(config, 'GLARE_MASK_VAL_HIGH', 240),
+            getattr(config, 'GLARE_MASK_FILL_WITH', 'mean'),
+            getattr(config, 'GLARE_MASK_MORPH_KERNEL', 3),
+            getattr(config, 'GLARE_MASK_MORPH_ITERATIONS', 1),
+        )
     elif "HSV2BGR" == name:
         return cv_parts.ImgHSV2BGR()
     elif "RGB2GRAY" == name:

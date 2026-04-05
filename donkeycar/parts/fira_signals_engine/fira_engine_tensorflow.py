@@ -18,10 +18,19 @@ cv2.setNumThreads(4)
 
 class TensorflowDetect(object):
     def __init__(self, model_folder, model_name):
-        # Load TensorFlow model
         model_path = os.path.join(model_folder, model_name)
-        self.model = tf.saved_model.load(model_path)
-        self.detect_fn = self.model.signatures['serving_default']
+        self.backend = None
+        self.model = None
+        self.detect_fn = None
+        self.tflite_interpreter = None
+        self.tflite_input_detail = None
+        self.tflite_output_details = None
+
+        if model_name.lower().endswith('.tflite'):
+            self._load_tflite_model(model_path)
+        else:
+            self._load_saved_model(model_path)
+
         self.classes = {
             1: 'Stop',
             2: 'No_entry',
@@ -30,6 +39,18 @@ class TensorflowDetect(object):
             5: 'Right',
             6: 'Forward',
         }  # Define your classes here
+
+    def _load_saved_model(self, model_path):
+        self.model = tf.saved_model.load(model_path)
+        self.detect_fn = self.model.signatures['serving_default']
+        self.backend = 'saved_model'
+
+    def _load_tflite_model(self, model_path):
+        self.tflite_interpreter = tf.lite.Interpreter(model_path=model_path)
+        self.tflite_interpreter.allocate_tensors()
+        self.tflite_input_detail = self.tflite_interpreter.get_input_details()[0]
+        self.tflite_output_details = self.tflite_interpreter.get_output_details()
+        self.backend = 'tflite'
 
     def show_fps(self, prev_frame_time, img_arr):
         img = img_arr.copy()
@@ -56,18 +77,102 @@ class TensorflowDetect(object):
         return img_arr
 
     def run_prediction(self, img_arr):
-        # Convert the image to the format TensorFlow expects
-        input_tensor = tf.convert_to_tensor(img_arr)
-        input_tensor = input_tensor[tf.newaxis,...]  # Add batch dimension
+        if self.backend == 'saved_model':
+            # Convert the image to the format TensorFlow expects
+            input_tensor = tf.convert_to_tensor(img_arr)
+            input_tensor = input_tensor[tf.newaxis,...]  # Add batch dimension
 
-        # Run inference
-        output_dict = self.detect_fn(input_tensor)
+            # Run inference
+            output_dict = self.detect_fn(input_tensor)
 
-        # All outputs are batches tensors
-        # Convert to numpy arrays, and take index [0] to get rid of batch dimension
-        boxes = output_dict['detection_boxes'][0].numpy()
-        class_ids = output_dict['detection_classes'][0].numpy().astype(np.int32)
-        scores = output_dict['detection_scores'][0].numpy()
+            # All outputs are batch tensors
+            # Convert to numpy arrays, and take index [0] to get rid of batch dimension
+            boxes = output_dict['detection_boxes'][0].numpy()
+            class_ids = output_dict['detection_classes'][0].numpy().astype(np.int32)
+            scores = output_dict['detection_scores'][0].numpy()
+            return boxes, class_ids, scores
+
+        if self.backend == 'tflite':
+            return self._run_tflite_prediction(img_arr)
+
+        raise RuntimeError('TensorflowDetect backend is not initialized')
+
+    def _run_tflite_prediction(self, img_arr):
+        input_detail = self.tflite_input_detail
+        input_shape = input_detail['shape']
+        in_height = int(input_shape[1])
+        in_width = int(input_shape[2])
+
+        resized = cv2.resize(img_arr, (in_width, in_height))
+        input_dtype = input_detail['dtype']
+
+        if input_dtype == np.float32:
+            input_tensor = resized.astype(np.float32) / 255.0
+        else:
+            input_tensor = resized.astype(input_dtype)
+
+        input_tensor = np.expand_dims(input_tensor, axis=0)
+        self.tflite_interpreter.set_tensor(input_detail['index'], input_tensor)
+        self.tflite_interpreter.invoke()
+
+        raw_outputs = [
+            self.tflite_interpreter.get_tensor(detail['index'])
+            for detail in self.tflite_output_details
+        ]
+
+        boxes, class_ids, scores = self._parse_tflite_outputs(raw_outputs)
+        return boxes, class_ids, scores
+
+    def _parse_tflite_outputs(self, raw_outputs):
+        squeezed = [np.squeeze(output) for output in raw_outputs]
+
+        boxes = None
+        scores = None
+        class_ids = None
+        num_detections = None
+
+        for output in squeezed:
+            arr = np.asarray(output)
+            if arr.ndim == 2 and arr.shape[-1] == 4:
+                boxes = arr.astype(np.float32)
+                continue
+            if arr.ndim == 0:
+                num_detections = int(arr)
+                continue
+
+            if arr.ndim == 1:
+                if scores is None and arr.size > 0 and arr.min() >= -1e-6 and arr.max() <= 1.0 + 1e-6:
+                    scores = arr.astype(np.float32)
+                    continue
+                if class_ids is None:
+                    class_ids = arr.astype(np.int32)
+                    continue
+
+        # Fallback to the common TF detection tflite output order.
+        if boxes is None and len(squeezed) >= 1:
+            maybe_boxes = np.asarray(squeezed[0])
+            if maybe_boxes.ndim == 2 and maybe_boxes.shape[-1] == 4:
+                boxes = maybe_boxes.astype(np.float32)
+        if class_ids is None and len(squeezed) >= 2:
+            class_ids = np.asarray(squeezed[1]).astype(np.int32)
+        if scores is None and len(squeezed) >= 3:
+            scores = np.asarray(squeezed[2]).astype(np.float32)
+        if num_detections is None and len(squeezed) >= 4 and np.asarray(squeezed[3]).ndim == 0:
+            num_detections = int(np.asarray(squeezed[3]))
+
+        if boxes is None or class_ids is None or scores is None:
+            raise RuntimeError('Unable to parse TFLite detection outputs')
+
+        if num_detections is not None:
+            limit = max(0, min(num_detections, len(boxes), len(class_ids), len(scores)))
+            boxes = boxes[:limit]
+            class_ids = class_ids[:limit]
+            scores = scores[:limit]
+        else:
+            limit = min(len(boxes), len(class_ids), len(scores))
+            boxes = boxes[:limit]
+            class_ids = class_ids[:limit]
+            scores = scores[:limit]
 
         return boxes, class_ids, scores
 
@@ -140,9 +245,29 @@ class ProceedManager(object):
         return self.correction_duration <= elapsed_time < (self.correction_duration + self.straight_duration)
 
 class FIRAEngineTensorFlow(object):
-    def __init__(self, model_folder, tf_model_name, fira_classes, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
-        self.tf_detector = TensorflowDetect(model_folder, tf_model_name)
-        self.tf_detector.classes = fira_classes
+    def __init__(self, model_folder, tf_model_name, fira_classes, apriltag_hz,
+                 zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2,
+                 wait_duration=3.0, turn_initial_wait_duration=1.0,
+                 proceed_correction_duration=1.0,
+                 proceed_straight_duration=1.0,
+                 tf_disable_after_errors=5,
+                 debug_visuals=True, debug=False):
+        self.tf_detector = None
+        self.detector_ready = False
+        self.detector_backend = 'unavailable'
+        self.consecutive_detection_errors = 0
+        self.max_consecutive_detection_errors = max(1, tf_disable_after_errors)
+        self.last_detection_error = None
+
+        try:
+            self.tf_detector = TensorflowDetect(model_folder, tf_model_name)
+            self.tf_detector.classes = fira_classes
+            self.detector_ready = True
+            self.detector_backend = self.tf_detector.backend
+        except Exception as e:
+            self.last_detection_error = str(e)
+            logger.error('TensorFlow detector init failed, disabling TF engine: %s', e)
+
         self.zebra_crosswalk_detector = ZebraCrosswalkDetector(zebra_hz)
         self.turn_manager = TurnManager(turn_duration, turn_initial_wait_duration)
         self.proceed_manager = ProceedManager(proceed_correction_duration, proceed_straight_duration)
@@ -161,6 +286,17 @@ class FIRAEngineTensorFlow(object):
 
         if self.debug:
             logger.info("FIRA engine running...")
+
+    def get_health(self):
+        return {
+            'engine': 'tensorflow',
+            'detector_ready': self.detector_ready,
+            'detector_backend': self.detector_backend,
+            'consecutive_detection_errors': self.consecutive_detection_errors,
+            'max_consecutive_detection_errors': self.max_consecutive_detection_errors,
+            'last_detection_error': self.last_detection_error,
+            'state': self.state,
+        }
 
     def crop_image(self, img, crop_ratio=None):
         if crop_ratio is None:
@@ -195,7 +331,21 @@ class FIRAEngineTensorFlow(object):
             raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
 
         # Run detection with TensorFlow model
-        boxes, class_ids, scores = self.tf_detector.run(img)
+        try:
+            boxes, class_ids, scores = self.tf_detector.run(img)
+            self.consecutive_detection_errors = 0
+            self.last_detection_error = None
+        except Exception as e:
+            self.consecutive_detection_errors += 1
+            self.last_detection_error = str(e)
+            logger.error('TensorFlow inference error (%d/%d): %s',
+                         self.consecutive_detection_errors,
+                         self.max_consecutive_detection_errors,
+                         e)
+            if self.consecutive_detection_errors >= self.max_consecutive_detection_errors:
+                self.detector_ready = False
+                logger.error('TensorFlow detector disabled after repeated inference errors')
+            return angle, throttle, img_arr
         if self.debug:
             logger.info(f"TensorFlow results: {boxes}, {class_ids}, {scores}")
 
@@ -207,14 +357,30 @@ class FIRAEngineTensorFlow(object):
            # Assuming you have a list of class names and confidence threshold
             if score > 0.7:
                 class_id = class_ids[i]
-                box = boxes[i]
-                y1, x1, y2, x2 = box
+                y1, x1, y2, x2 = boxes[i]
+
+                # Most TF detectors output normalized boxes. Convert to pixels.
+                img_h, img_w = img.shape[:2]
+                if max(y1, x1, y2, x2) <= 1.5:
+                    y1 = int(max(0, min(img_h - 1, y1 * img_h)))
+                    x1 = int(max(0, min(img_w - 1, x1 * img_w)))
+                    y2 = int(max(0, min(img_h - 1, y2 * img_h)))
+                    x2 = int(max(0, min(img_w - 1, x2 * img_w)))
+                else:
+                    y1 = int(max(0, min(img_h - 1, y1)))
+                    x1 = int(max(0, min(img_w - 1, x1)))
+                    y2 = int(max(0, min(img_h - 1, y2)))
+                    x2 = int(max(0, min(img_w - 1, x2)))
 
                 # Map class ID to class name using class_map
                 class_name = self.tf_detector.classes.get(class_id, "Unknown")
 
                 # Estimate distance if necessary
-                distance = self.tf_detector.estimate_distance(KNOWN_WIDTH, FOCAL_LENGTH, x2 - x1)
+                distance = self.tf_detector.estimate_distance(
+                    KNOWN_WIDTH,
+                    FOCAL_LENGTH,
+                    max(1, x2 - x1),
+                )
 
                 # Log the distance for debugging
                 if self.debug:
@@ -247,6 +413,9 @@ class FIRAEngineTensorFlow(object):
 
     def run(self, angle, throttle, input_img_arr):
         current_time = time.time()        
+
+        if not self.detector_ready:
+            return angle, throttle, input_img_arr
 
         if self.state == 'stop':
             if current_time - self.stop_start_time >= self.stop_duration:

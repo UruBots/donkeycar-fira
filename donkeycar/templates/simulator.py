@@ -3,8 +3,8 @@
 Scripts to drive a donkey 4 car
 
 Usage:
-    manage.py (drive) [--model=<model>] [--js] [--type=(linear|categorical)] [--camera=(single|stereo)] [--meta=<key:value> ...] [--myconfig=<filename>]
-    manage.py (train) [--tubs=tubs] (--model=<model>) [--type=(linear|inferred|tensorrt_linear|tflite_linear)]
+    manage.py (drive) [--model=<model>] [--js] [--type=(linear|pilotnet|mlp|categorical|memory|rnn|cnn_lstm|confidence|vit|world_model|diffusion_policy|inferred|tensorrt_linear|tflite_linear)] [--camera=(single|stereo)] [--meta=<key:value> ...] [--myconfig=<filename>]
+    manage.py (train) [--tubs=tubs] (--model=<model>) [--type=(linear|pilotnet|mlp|categorical|memory|rnn|cnn_lstm|confidence|vit|world_model|diffusion_policy|inferred|tensorrt_linear|tflite_linear)]
 
 Options:
     -h --help               Show this screen.
@@ -241,8 +241,15 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
     def load_model(kl, model_path):
         start = time.time()
         print('loading model', model_path)
-        kl.load(model_path)
-        print('finished loading in %s sec.' % (str(time.time() - start)) )
+        try:
+            kl.load(model_path)
+            dk.utils.apply_model_metadata(cfg, dk.utils.read_model_metadata(model_path))
+            print('finished loading in %s sec.' % (str(time.time() - start)) )
+            return True
+        except Exception as e:
+            print(e)
+            print('ERR>> problems loading model', model_path)
+            return False
 
     def load_weights(kl, weights_path):
         start = time.time()
@@ -277,10 +284,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
                 model_path or 'tflite' in model_path or '.pkl' in model_path:
             #when we have a .h5 extension
             #load everything from the model file
-            load_model(kl, model_path)
+            kl, _ = dk.utils.load_model_with_fallback(model_type, cfg, model_path)
 
             def reload_model(filename):
-                load_model(kl, filename)
+                if not load_model(kl, filename):
+                    print(f'WARN>> hot reload failed for {filename}. Keeping previous in-memory model.')
 
             model_reload_cb = reload_model
 

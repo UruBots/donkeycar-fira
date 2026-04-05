@@ -4,7 +4,10 @@ utils.py
 Functions that don't fit anywhere else.
 
 '''
+from __future__ import annotations
+
 from io import BytesIO
+import json
 import os
 import glob
 import socket
@@ -17,12 +20,17 @@ import random
 import time
 import signal
 import logging
-from typing import List, Any, Tuple, Union
+from typing import List, Any, Tuple, Union, TYPE_CHECKING
 
 from PIL import Image
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from donkeycar.config import Config
+    from donkeycar.parts.keras import KerasPilot
+    from donkeycar.parts.fastai import FastAiPilot
 
 
 ONE_BYTE_SCALE = 1.0 / 255.0
@@ -157,6 +165,61 @@ def denormalize_image(img_arr_float):
     :return:                [0,255]uint8 numpy image array
     """
     return (img_arr_float * 255.0).astype(np.uint8)
+
+
+def model_metadata_path(model_path):
+    return f'{model_path}.metadata.json'
+
+
+def read_model_metadata(model_path):
+    metadata_file = model_metadata_path(model_path)
+    if not os.path.exists(metadata_file):
+        return {}
+
+    try:
+        with open(metadata_file, 'r') as handle:
+            return json.load(handle)
+    except Exception as exc:
+        logger.warning('Unable to read model metadata %s: %s', metadata_file, exc)
+        return {}
+
+
+def write_model_metadata(model_path, metadata):
+    metadata_file = model_metadata_path(model_path)
+    with open(metadata_file, 'w') as handle:
+        json.dump(metadata, handle, indent=2, sort_keys=True)
+
+
+def apply_model_metadata(cfg, metadata):
+    if not metadata:
+        return cfg
+
+    use_glare_mask = metadata.get('use_glare_mask')
+    if use_glare_mask is not None:
+        cfg.GLARE_MASK = bool(use_glare_mask)
+        transformations = list(getattr(cfg, 'TRANSFORMATIONS', []))
+        transformations = [name for name in transformations
+                           if name != 'GLARE_MASK']
+        if cfg.GLARE_MASK:
+            transformations.insert(0, 'GLARE_MASK')
+        cfg.TRANSFORMATIONS = transformations
+
+    use_style_transfer = metadata.get('use_style_transfer')
+    if use_style_transfer is not None:
+        cfg.AUG_STYLE_TRANSFER = bool(use_style_transfer)
+        if metadata.get('style_transfer_preset') is not None:
+            cfg.AUG_STYLE_TRANSFER_PRESET = metadata['style_transfer_preset']
+        if metadata.get('style_transfer_blend') is not None:
+            cfg.AUG_STYLE_TRANSFER_BLEND = metadata['style_transfer_blend']
+
+        augmentations = list(getattr(cfg, 'AUGMENTATIONS', []))
+        augmentations = [name for name in augmentations
+                         if name != 'STYLE_TRANSFER']
+        if cfg.AUG_STYLE_TRANSFER:
+            augmentations.append('STYLE_TRANSFER')
+        cfg.AUGMENTATIONS = augmentations
+
+    return cfg
 
 
 def load_pil_image(filename, cfg):
@@ -488,7 +551,8 @@ def get_model_by_type(model_type: str, cfg: 'Config') -> Union['KerasPilot', 'Fa
     '''
     from donkeycar.parts.keras import KerasCategorical, KerasLinear, \
         KerasInferred, KerasIMU, KerasMemory, KerasBehavioral, KerasLocalizer, \
-        KerasLSTM, Keras3D_CNN
+        KerasLSTM, Keras3D_CNN, KerasPilotNet, KerasMLP, KerasConfidence, \
+        KerasViT, KerasWorldModel, KerasDiffusionPolicy, KerasCNNLSTM
     from donkeycar.parts.interpreter import KerasInterpreter, TfLite, TensorRT, \
         FastAIInterpreter
 
@@ -544,12 +608,70 @@ def get_model_by_type(model_type: str, cfg: 'Config') -> Union['KerasPilot', 'Fa
     elif used_model_type == '3d':
         kl = Keras3D_CNN(interpreter=interpreter, input_shape=input_shape,
                          seq_length=cfg.SEQUENCE_LENGTH)
+    elif used_model_type == 'pilotnet':
+        kl = KerasPilotNet(interpreter=interpreter, input_shape=input_shape)
+    elif used_model_type == 'mlp':
+        kl = KerasMLP(interpreter=interpreter, input_shape=input_shape)
+    elif used_model_type == 'confidence':
+        confidence_threshold = getattr(cfg, 'CONFIDENCE_THRESHOLD', 0.5)
+        kl = KerasConfidence(interpreter=interpreter, input_shape=input_shape,
+                             confidence_threshold=confidence_threshold)
+    elif used_model_type == 'vit':
+        kl = KerasViT(interpreter=interpreter, input_shape=input_shape)
+    elif used_model_type == 'world_model':
+        kl = KerasWorldModel(interpreter=interpreter,
+                             input_shape=input_shape,
+                             seq_length=cfg.SEQUENCE_LENGTH)
+    elif used_model_type == 'diffusion_policy':
+        diffusion_steps = getattr(cfg, 'DIFFUSION_STEPS', 50)
+        diffusion_inference_steps = getattr(cfg, 'DIFFUSION_INFERENCE_STEPS', 10)
+        kl = KerasDiffusionPolicy(interpreter=interpreter,
+                                  input_shape=input_shape,
+                                  diffusion_steps=diffusion_steps,
+                                  diffusion_inference_steps=diffusion_inference_steps)
+    elif used_model_type == 'cnn_lstm':
+        kl = KerasCNNLSTM(interpreter=interpreter,
+                          input_shape=input_shape,
+                          seq_length=cfg.SEQUENCE_LENGTH)
     else:
         known = [k + u for k in ('', 'tflite_', 'tensorrt_')
                  for u in used_model_type.mem]
         raise ValueError(f"Unknown model type {model_type}, supported types are"
                          f" { ', '.join(known)}")
     return kl
+
+
+def load_model_with_fallback(model_type: str, cfg: 'Config', model_path: str) \
+        -> Tuple['KerasPilot', str]:
+    """
+    Build and load a model using ``model_type`` and optionally fallback to
+    ``cfg.MODEL_LOAD_FALLBACK_TYPE`` if loading fails.
+
+    Returns the loaded model and the model type that was actually used.
+    """
+    selected_model_type = model_type if model_type is not None \
+        else cfg.DEFAULT_MODEL_TYPE
+    kl = get_model_by_type(selected_model_type, cfg)
+    try:
+        kl.load(model_path=model_path)
+        apply_model_metadata(cfg, read_model_metadata(model_path))
+        return kl, selected_model_type
+    except Exception as e:
+        fallback_enabled = getattr(cfg, 'MODEL_LOAD_ENABLE_FALLBACK', True)
+        fallback_model_type = getattr(cfg, 'MODEL_LOAD_FALLBACK_TYPE', 'linear')
+        if fallback_enabled and fallback_model_type and \
+                fallback_model_type != selected_model_type:
+            logger.warning(
+                'Model load failed for type %s: %s. Falling back to %s.',
+                selected_model_type,
+                e,
+                fallback_model_type,
+            )
+            kl = get_model_by_type(fallback_model_type, cfg)
+            kl.load(model_path=model_path)
+            apply_model_metadata(cfg, read_model_metadata(model_path))
+            return kl, fallback_model_type
+        raise
 
 
 def get_test_img(keras_pilot):

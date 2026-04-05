@@ -772,6 +772,310 @@ class Keras3D_CNN(KerasPilot):
         return shapes
 
 
+class KerasPilotNet(KerasLinear):
+    """
+    PilotNet-style model: deeper CNN backbone than KerasLinear.
+    """
+    def create_model(self):
+        return default_pilotnet(self.input_shape)
+
+
+class KerasMLP(KerasLinear):
+    """
+    MLP head on top of the standard CNN backbone.
+    """
+    def create_model(self):
+        return default_mlp(self.input_shape)
+
+
+class KerasConfidence(KerasPilot):
+    """
+    Dual-head model: steering, throttle and confidence.
+    Returns neutral outputs when confidence is below threshold.
+    """
+    def __init__(self,
+                 interpreter: Interpreter = KerasInterpreter(),
+                 input_shape: Tuple[int, ...] = (120, 160, 3),
+                 confidence_threshold: float = 0.5):
+        self.confidence_threshold = confidence_threshold
+        super().__init__(interpreter, input_shape)
+
+    def create_model(self):
+        return default_confidence(self.input_shape)
+
+    def compile(self):
+        self.interpreter.compile(
+            optimizer=self.optimizer,
+            loss={
+                'angle_out': 'mse',
+                'throttle_out': 'mse',
+                'zconfidence_out': 'mse',
+            },
+            loss_weights={
+                'angle_out': 1.0,
+                'throttle_out': 1.0,
+                'zconfidence_out': 0.3,
+            })
+
+    def interpreter_to_output(self, interpreter_out):
+        angle_arr, throttle_arr, confidence_arr = interpreter_out
+        angle = float(np.ravel(angle_arr)[0])
+        throttle = float(np.ravel(throttle_arr)[0])
+        confidence = float(np.ravel(confidence_arr)[0])
+        if confidence < self.confidence_threshold:
+            return 0.0, 0.0
+        return angle, throttle
+
+    def y_transform(self, record: Union[TubRecord, List[TubRecord]]) \
+            -> Dict[str, Union[float, List[float]]]:
+        assert isinstance(record, TubRecord), 'TubRecord expected'
+        angle: float = record.underlying['user/angle']
+        throttle: float = record.underlying['user/throttle']
+        return {
+            'angle_out': angle,
+            'throttle_out': throttle,
+            'zconfidence_out': 1.0,
+        }
+
+    def output_shapes(self):
+        img_shape = self.get_input_shape('img_in')[1:]
+        shapes = ({'img_in': tf.TensorShape(img_shape)},
+                  {'angle_out': tf.TensorShape([]),
+                   'throttle_out': tf.TensorShape([]),
+                   'zconfidence_out': tf.TensorShape([])})
+        return shapes
+
+
+class KerasCNNLSTM(KerasPilot):
+    """
+    CNN feature extractor + temporal LSTM head.
+    """
+    def __init__(self,
+                 interpreter: Interpreter = KerasInterpreter(),
+                 input_shape: Tuple[int, ...] = (120, 160, 3),
+                 seq_length=3,
+                 num_outputs=2):
+        self.num_outputs = num_outputs
+        self.seq_length = seq_length
+        super().__init__(interpreter, input_shape)
+        self.img_seq = deque()
+
+    def seq_size(self) -> int:
+        return self.seq_length
+
+    def create_model(self):
+        return cnn_lstm(seq_length=self.seq_length,
+                        num_outputs=self.num_outputs,
+                        input_shape=self.input_shape)
+
+    def compile(self):
+        self.interpreter.compile(optimizer=self.optimizer, loss='mse')
+
+    def x_transform(
+            self,
+            records: Union[TubRecord, List[TubRecord]],
+            img_processor: Callable[[np.ndarray], np.ndarray]) \
+            -> Dict[str, Union[float, np.ndarray]]:
+        assert isinstance(records, list), 'List[TubRecord] expected'
+        assert len(records) == self.seq_length, \
+            f"Record list of length {self.seq_length} required but " \
+            f"{len(records)} was passed"
+        img_arrays = [rec.image(processor=img_processor) for rec in records]
+        return {'img_in': np.array(img_arrays)}
+
+    def y_transform(self, records: Union[TubRecord, List[TubRecord]]) \
+            -> Dict[str, Union[float, List[float]]]:
+        assert isinstance(records, list), 'List[TubRecord] expected'
+        angle = records[-1].underlying['user/angle']
+        throttle = records[-1].underlying['user/throttle']
+        return {'model_outputs': [angle, throttle]}
+
+    def run(self, img_arr, *other_arr):
+        while len(self.img_seq) < self.seq_length:
+            self.img_seq.append(img_arr)
+        self.img_seq.popleft()
+        self.img_seq.append(img_arr)
+        img_seq = np.array(self.img_seq).reshape((self.seq_length,
+                                                  *self.input_shape))
+        img_seq = normalize_image(img_seq)
+        return self.inference_from_dict({'img_in': img_seq})
+
+    def interpreter_to_output(self, interpreter_out) \
+            -> Tuple[Union[float, np.ndarray], ...]:
+        steering = interpreter_out[0]
+        throttle = interpreter_out[1]
+        return steering, throttle
+
+    def output_shapes(self):
+        img_shape = self.get_input_shape('img_in')[1:]
+        shapes = ({'img_in': tf.TensorShape(img_shape)},
+                  {'model_outputs': tf.TensorShape([self.num_outputs])})
+        return shapes
+
+
+class KerasViT(KerasLinear):
+    """
+    Vision Transformer based regression pilot.
+    """
+    def create_model(self):
+        return default_vit(self.input_shape)
+
+
+class KerasWorldModel(KerasPilot):
+    """
+    World-model inspired pilot using image and previous-action sequences.
+    """
+    def __init__(self,
+                 interpreter: Interpreter = KerasInterpreter(),
+                 input_shape: Tuple[int, ...] = (120, 160, 3),
+                 seq_length=3,
+                 num_outputs=2):
+        self.num_outputs = num_outputs
+        self.seq_length = seq_length
+        super().__init__(interpreter, input_shape)
+        self.img_seq = deque()
+        self.action_seq = deque([[0.0, 0.0]] * seq_length)
+
+    def seq_size(self) -> int:
+        return self.seq_length + 1
+
+    def create_model(self):
+        return world_model(seq_length=self.seq_length,
+                           num_outputs=self.num_outputs,
+                           input_shape=self.input_shape)
+
+    def compile(self):
+        self.interpreter.compile(optimizer=self.optimizer, loss='mse')
+
+    def x_transform(
+            self,
+            records: Union[TubRecord, List[TubRecord]],
+            img_processor: Callable[[np.ndarray], np.ndarray]) \
+            -> Dict[str, Union[float, np.ndarray]]:
+        assert isinstance(records, list), 'List[TubRecord] expected'
+        assert len(records) == self.seq_length + 1, \
+            f"Record list of length {self.seq_length + 1} required but " \
+            f"{len(records)} was passed"
+        img_arrays = [rec.image(processor=img_processor) for rec in records[1:]]
+        prev_actions = [[rec.underlying['user/angle'], rec.underlying['user/throttle']]
+                        for rec in records[:-1]]
+        return {
+            'img_in': np.array(img_arrays),
+            'a_prev_in': np.array(prev_actions),
+        }
+
+    def y_transform(self, records: Union[TubRecord, List[TubRecord]]) \
+            -> Dict[str, Union[float, List[float]]]:
+        assert isinstance(records, list), 'List[TubRecord] expected'
+        angle = records[-1].underlying['user/angle']
+        throttle = records[-1].underlying['user/throttle']
+        return {'model_outputs': [angle, throttle]}
+
+    def run(self, img_arr, *other_arr):
+        while len(self.img_seq) < self.seq_length:
+            self.img_seq.append(img_arr)
+        self.img_seq.popleft()
+        self.img_seq.append(img_arr)
+        img_seq = np.array(self.img_seq).reshape((self.seq_length,
+                                                  *self.input_shape))
+        img_seq = normalize_image(img_seq)
+        a_prev = np.array(self.action_seq).reshape((self.seq_length, 2))
+        steering, throttle = self.inference_from_dict({'img_in': img_seq,
+                                                       'a_prev_in': a_prev})
+        self.action_seq.popleft()
+        self.action_seq.append([steering, throttle])
+        return steering, throttle
+
+    def interpreter_to_output(self, interpreter_out) \
+            -> Tuple[Union[float, np.ndarray], ...]:
+        steering = interpreter_out[0]
+        throttle = interpreter_out[1]
+        return steering, throttle
+
+    def output_shapes(self):
+        img_shape = self.get_input_shape('img_in')[1:]
+        a_prev_shape = self.get_input_shape('a_prev_in')[1:]
+        shapes = ({'img_in': tf.TensorShape(img_shape),
+                   'a_prev_in': tf.TensorShape(a_prev_shape)},
+                  {'model_outputs': tf.TensorShape([self.num_outputs])})
+        return shapes
+
+
+class KerasDiffusionPolicy(KerasPilot):
+    """
+    Diffusion-style policy pilot for inference.
+
+    Training is intentionally unsupported in the standard Donkeycar training
+    pipeline because denoising diffusion requires step-wise stochastic targets.
+    """
+    def __init__(self,
+                 interpreter: Interpreter = KerasInterpreter(),
+                 input_shape: Tuple[int, ...] = (120, 160, 3),
+                 diffusion_steps: int = 50,
+                 diffusion_inference_steps: int = 10):
+        self.diffusion_steps = diffusion_steps
+        self.diffusion_inference_steps = diffusion_inference_steps
+        self.beta = np.linspace(1e-4, 2e-2, diffusion_steps, dtype=np.float32)
+        self.alpha = 1.0 - self.beta
+        self.alpha_bar = np.cumprod(self.alpha)
+        super().__init__(interpreter, input_shape)
+
+    def create_model(self):
+        return diffusion_policy(self.input_shape, self.diffusion_steps)
+
+    def compile(self):
+        self.interpreter.compile(optimizer=self.optimizer, loss='mse')
+
+    def train(self, *args, **kwargs):
+        raise NotImplementedError(
+            'Diffusion policy training requires a custom denoising loop and is '
+            'not supported by the default Donkeycar tf.data training pipeline.'
+        )
+
+    def run(self, img_arr: np.ndarray, *other_arr: List[float]) \
+            -> Tuple[Union[float, np.ndarray], ...]:
+        norm_img_arr = normalize_image(img_arr)
+        action = np.random.randn(2).astype(np.float32)
+        steps = np.linspace(self.diffusion_steps - 1,
+                            0,
+                            num=max(1, self.diffusion_inference_steps),
+                            dtype=np.int32)
+        for t in steps:
+            input_dict = {
+                'img_in': norm_img_arr,
+                't_in': np.array(t, dtype=np.int32),
+                'a_noisy_in': action,
+            }
+            noise_pred = np.ravel(self.interpreter.predict_from_dict(input_dict))
+            alpha_t = float(self.alpha[t])
+            alpha_bar_t = float(self.alpha_bar[t])
+            coef = (1.0 - alpha_t) / np.sqrt(max(1e-8, 1.0 - alpha_bar_t))
+            action = (action - coef * noise_pred) / np.sqrt(max(1e-8, alpha_t))
+            if t > 0:
+                action += np.sqrt(float(self.beta[t])) * \
+                    np.random.randn(2).astype(np.float32)
+            action = np.clip(action, -1.0, 1.0)
+        return float(action[0]), float(action[1])
+
+    def interpreter_to_output(self, interpreter_out):
+        # Not used directly; inference is implemented in run().
+        out = np.ravel(interpreter_out)
+        return float(out[0]), float(out[1])
+
+    def y_transform(self, record: Union[TubRecord, List[TubRecord]]) \
+            -> Dict[str, Union[float, List[float]]]:
+        raise NotImplementedError('Diffusion policy requires custom training loop')
+
+    def output_shapes(self):
+        img_shape = self.get_input_shape('img_in')[1:]
+        a_noisy_shape = self.get_input_shape('a_noisy_in')[1:]
+        shapes = ({'img_in': tf.TensorShape(img_shape),
+                   't_in': tf.TensorShape([]),
+                   'a_noisy_in': tf.TensorShape(a_noisy_shape)},
+                  {'noise_out': tf.TensorShape([2])})
+        return shapes
+
+
 class KerasLatent(KerasPilot):
     def __init__(self,
                  interpreter: Interpreter = KerasInterpreter(),
@@ -856,6 +1160,190 @@ def default_n_linear(num_outputs, input_shape=(120, 160, 3)):
 
     model = Model(inputs=[img_in], outputs=outputs, name='linear')
     return model
+
+
+def default_pilotnet(input_shape=(120, 160, 3)):
+    drop = 0.2
+    img_in = Input(shape=input_shape, name='img_in')
+    x = Convolution2D(24, (5, 5), strides=(2, 2), activation='relu',
+                      name='pilotnet_conv1')(img_in)
+    x = Dropout(drop)(x)
+    x = Convolution2D(36, (5, 5), strides=(2, 2), activation='relu',
+                      name='pilotnet_conv2')(x)
+    x = Dropout(drop)(x)
+    x = Convolution2D(48, (5, 5), strides=(2, 2), activation='relu',
+                      name='pilotnet_conv3')(x)
+    x = Dropout(drop)(x)
+    x = Convolution2D(64, (3, 3), strides=(1, 1), padding='same',
+                      activation='relu', name='pilotnet_conv4')(x)
+    x = Dropout(drop)(x)
+    x = Convolution2D(64, (3, 3), strides=(1, 1), padding='same',
+                      activation='relu', name='pilotnet_conv5')(x)
+    x = Dropout(drop)(x)
+    x = Flatten(name='pilotnet_flatten')(x)
+    x = Dense(100, activation='relu', name='pilotnet_dense1')(x)
+    x = Dense(50, activation='relu', name='pilotnet_dense2')(x)
+    x = Dense(10, activation='relu', name='pilotnet_dense3')(x)
+    angle_out = Dense(1, activation='linear', name='n_outputs0')(x)
+    throttle_out = Dense(1, activation='linear', name='n_outputs1')(x)
+    return Model(inputs=[img_in], outputs=[angle_out, throttle_out],
+                 name='pilotnet')
+
+
+def default_mlp(input_shape=(120, 160, 3)):
+    drop = 0.2
+    img_in = Input(shape=input_shape, name='img_in')
+    x = core_cnn_layers(img_in, drop)
+    x = Dense(128, activation='relu', name='mlp_dense1')(x)
+    x = Dropout(0.1)(x)
+    angle_out = Dense(1, activation='linear', name='n_outputs0')(x)
+    throttle_out = Dense(1, activation='linear', name='n_outputs1')(x)
+    return Model(inputs=[img_in], outputs=[angle_out, throttle_out],
+                 name='mlp')
+
+
+def default_confidence(input_shape=(120, 160, 3)):
+    drop = 0.2
+    img_in = Input(shape=input_shape, name='img_in')
+    x = core_cnn_layers(img_in, drop)
+    x = Dense(128, activation='relu', name='confidence_dense1')(x)
+    x = Dropout(drop)(x)
+    angle_out = Dense(1, activation='linear', name='angle_out')(x)
+    throttle_out = Dense(1, activation='linear', name='throttle_out')(x)
+    # keep this output name sorted after angle/throttle for TFLite consistency
+    zconfidence_out = Dense(1, activation='sigmoid',
+                            name='zconfidence_out')(x)
+    return Model(inputs=[img_in],
+                 outputs=[angle_out, throttle_out, zconfidence_out],
+                 name='confidence')
+
+
+def cnn_lstm(seq_length=3, num_outputs=2, input_shape=(120, 160, 3)):
+    img_seq_shape = (seq_length,) + input_shape
+    img_in = Input(shape=img_seq_shape, name='img_in')
+    drop_out = 0.2
+
+    frame_in = Input(shape=input_shape, name='frame_in')
+    frame_feat = core_cnn_layers(frame_in, drop_out)
+    frame_model = Model(inputs=frame_in, outputs=frame_feat,
+                        name='cnn_lstm_frame_encoder')
+
+    x = TD(frame_model)(img_in)
+    x = LSTM(64, return_sequences=False, name='cnn_lstm_lstm')(x)
+    x = Dropout(0.1)(x)
+    x = Dense(64, activation='relu', name='cnn_lstm_dense1')(x)
+    out = Dense(num_outputs, activation='linear', name='model_outputs')(x)
+    return Model(inputs=img_in, outputs=out, name='cnn_lstm')
+
+
+def _transformer_block(x, num_heads, mlp_dim, block_name):
+    dim = int(x.shape[-1])
+    ln1 = keras.layers.LayerNormalization(epsilon=1e-6,
+                                          name=f'{block_name}_ln1')(x)
+    attn = keras.layers.MultiHeadAttention(num_heads=num_heads,
+                                           key_dim=max(1, dim // num_heads),
+                                           name=f'{block_name}_mha')(ln1, ln1)
+    x = keras.layers.Add(name=f'{block_name}_add1')([x, attn])
+    ln2 = keras.layers.LayerNormalization(epsilon=1e-6,
+                                          name=f'{block_name}_ln2')(x)
+    mlp = Dense(mlp_dim, activation='gelu', name=f'{block_name}_mlp1')(ln2)
+    mlp = Dense(dim, name=f'{block_name}_mlp2')(mlp)
+    return keras.layers.Add(name=f'{block_name}_add2')([x, mlp])
+
+
+def default_vit(input_shape=(120, 160, 3)):
+    patch = 8
+    embed_dim = 96
+    num_heads = 4
+    layers_n = 2
+    img_in = Input(shape=input_shape, name='img_in')
+
+    h, w, _ = input_shape
+    target_h = max(patch, (h // patch) * patch)
+    target_w = max(patch, (w // patch) * patch)
+    x = img_in
+    if target_h != h or target_w != w:
+        x = keras.layers.Resizing(target_h, target_w, name='vit_resize')(x)
+
+    x = Convolution2D(embed_dim, (patch, patch), strides=(patch, patch),
+                      name='vit_patch_embed')(x)
+    num_patches = (target_h // patch) * (target_w // patch)
+    x = keras.layers.Reshape((num_patches, embed_dim),
+                             name='vit_reshape')(x)
+    x = keras.layers.LayerNormalization(epsilon=1e-6,
+                                        name='vit_ln_patch')(x)
+
+    cls_indices = keras.layers.Lambda(
+        lambda t: tf.zeros((tf.shape(t)[0], 1), dtype=tf.int32),
+        name='vit_cls_indices')(x)
+    cls_token = keras.layers.Embedding(1, embed_dim,
+                                       name='vit_cls_token')(cls_indices)
+    x = keras.layers.Concatenate(axis=1, name='vit_cls_concat')([cls_token, x])
+
+    seq_len = 1 + num_patches
+    pos_indices = keras.layers.Lambda(
+        lambda t: tf.reshape(tf.range(seq_len), (1, -1)),
+        name='vit_pos_indices')(x)
+    pos_embed = keras.layers.Embedding(seq_len, embed_dim,
+                                       name='vit_pos_embed')(pos_indices)
+    x = keras.layers.Add(name='vit_add_pos')([x, pos_embed])
+
+    for i in range(layers_n):
+        x = _transformer_block(x, num_heads, embed_dim * 4,
+                               block_name=f'vit_block_{i}')
+
+    x = keras.layers.LayerNormalization(epsilon=1e-6, name='vit_ln_out')(x)
+    x = keras.layers.Lambda(lambda t: t[:, 0, :], name='vit_cls_select')(x)
+    x = Dense(128, activation='gelu', name='vit_head1')(x)
+    x = Dropout(0.1)(x)
+    angle_out = Dense(1, activation='linear', name='n_outputs0')(x)
+    throttle_out = Dense(1, activation='linear', name='n_outputs1')(x)
+    return Model(inputs=[img_in], outputs=[angle_out, throttle_out],
+                 name='vit')
+
+
+def world_model(seq_length=3, num_outputs=2, input_shape=(120, 160, 3)):
+    img_seq_shape = (seq_length,) + input_shape
+    img_in = Input(shape=img_seq_shape, name='img_in')
+    a_prev_in = Input(shape=(seq_length, 2), name='a_prev_in')
+
+    frame_in = Input(shape=input_shape, name='world_frame_in')
+    frame_feat = core_cnn_layers(frame_in, 0.2)
+    frame_feat = Dense(32, activation='relu', name='world_latent')(frame_feat)
+    frame_model = Model(inputs=frame_in, outputs=frame_feat,
+                        name='world_encoder')
+
+    z_seq = TD(frame_model)(img_in)
+    x = keras.layers.Concatenate(axis=-1, name='world_concat')(
+        [z_seq, a_prev_in]
+    )
+    x = LSTM(64, return_sequences=False, name='world_lstm')(x)
+    x = Dense(64, activation='relu', name='world_dense1')(x)
+    out = Dense(num_outputs, activation='linear', name='model_outputs')(x)
+    return Model(inputs=[img_in, a_prev_in], outputs=[out],
+                 name='world_model')
+
+
+def diffusion_policy(input_shape=(120, 160, 3), diffusion_steps=50):
+    img_in = Input(shape=input_shape, name='img_in')
+    t_in = Input(shape=(), dtype=tf.int32, name='t_in')
+    a_noisy_in = Input(shape=(2,), name='a_noisy_in')
+
+    x = core_cnn_layers(img_in, 0.2)
+    obs = Dense(64, activation='relu', name='diff_obs_embed')(x)
+
+    t_embed = keras.layers.Embedding(diffusion_steps, 32,
+                                     name='diff_t_embed')(t_in)
+    t_embed = keras.layers.Flatten(name='diff_t_flat')(t_embed)
+
+    z = keras.layers.Concatenate(name='diff_concat')(
+        [obs, t_embed, a_noisy_in]
+    )
+    z = Dense(128, activation='relu', name='diff_dense1')(z)
+    z = Dense(128, activation='relu', name='diff_dense2')(z)
+    noise_out = Dense(2, activation='linear', name='noise_out')(z)
+    return Model(inputs=[img_in, t_in, a_noisy_in], outputs=[noise_out],
+                 name='diffusion_policy')
 
 
 def default_memory(input_shape=(120, 160, 3), mem_length=3, mem_depth=0):

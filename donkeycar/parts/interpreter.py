@@ -141,8 +141,18 @@ class KerasInterpreter(Interpreter):
         if type(output_shape) is not list:
             output_shape = [output_shape]
 
-        self.input_keys = self.model.input_names
-        self.output_keys = self.model.output_names
+        if hasattr(self.model, 'input_names'):
+            self.input_keys = self.model.input_names
+        else:
+            self.input_keys = [tensor.name.split(':')[0]
+                               for tensor in self.model.inputs]
+
+        if hasattr(self.model, 'output_names'):
+            self.output_keys = self.model.output_names
+        else:
+            self.output_keys = [tensor.name.split(':')[0]
+                                for tensor in self.model.outputs]
+
         self.shapes = (dict(zip(self.input_keys, input_shape)),
                        dict(zip(self.output_keys, output_shape)))
 

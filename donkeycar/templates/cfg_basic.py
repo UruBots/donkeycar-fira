@@ -104,13 +104,32 @@ NUM_LAST_LAYERS_TO_TRAIN = 7
 #and ideally wouldn't change once set.
 MODEL_CATEGORICAL_MAX_THROTTLE_RANGE = 0.8
 
+# Confidence model fallback threshold.
+# If model type is confidence and predicted confidence is below this value,
+# pilot output is neutralized.
+CONFIDENCE_THRESHOLD = 0.5
+
+# Robustez ante reflejos/glare en pista.
+GLARE_MASK = False
+GLARE_MASK_SAT_LOW = 80
+GLARE_MASK_VAL_HIGH = 240
+GLARE_MASK_FILL_WITH = 'mean'
+GLARE_MASK_MORPH_KERNEL = 3
+GLARE_MASK_MORPH_ITERATIONS = 1
+
 #RNN or 3D
 SEQUENCE_LENGTH = 3
 
+# Robustez por style transfer sintético en entrenamiento.
+AUG_STYLE_TRANSFER = False
+AUG_STYLE_TRANSFER_PRESET = 'random'
+AUG_STYLE_TRANSFER_BLEND = 0.35
+
 # Augmentations and Transformations
-AUGMENTATIONS = []
-TRANSFORMATIONS = []
-# Settings for brightness and blur, use 'BRIGHTNESS' and/or 'BLUR' in
+AUGMENTATIONS = ['STYLE_TRANSFER'] if AUG_STYLE_TRANSFER else []
+TRANSFORMATIONS = ['GLARE_MASK'] if GLARE_MASK else []
+# Settings for brightness, blur, and style transfer. Use 'BRIGHTNESS',
+# 'BLUR', and/or 'STYLE_TRANSFER' in
 # AUGMENTATIONS
 AUG_BRIGHTNESS_RANGE = 0.2  # this is interpreted as [-0.2, 0.2]
 AUG_BLUR_RANGE = (0, 3)

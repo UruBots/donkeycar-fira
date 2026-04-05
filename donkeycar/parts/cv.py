@@ -206,6 +206,60 @@ class ImgBGR2HSV:
     def shutdown(self):
         pass
 
+class ImgGlareMask:
+
+    def __init__(self, sat_low=80, val_high=240,
+                 fill_with='mean', morph_kernel=3, morph_iterations=1):
+        self.sat_low = sat_low
+        self.val_high = val_high
+        self.fill_with = fill_with
+        self.morph_kernel = morph_kernel
+        self.morph_iterations = morph_iterations
+
+    def run(self, img_arr):
+        if img_arr is None:
+            return None
+
+        if img_arr.dtype != np.uint8:
+            logger.error('ImgGlareMask expects uint8 RGB images')
+            return None
+
+        try:
+            hsv = cv2.cvtColor(img_arr, cv2.COLOR_RGB2HSV)
+            sat = hsv[:, :, 1]
+            val = hsv[:, :, 2]
+            mask = ((sat <= self.sat_low) & (val >= self.val_high)).astype(np.uint8) * 255
+
+            if self.morph_kernel and self.morph_kernel > 1:
+                kernel = np.ones((self.morph_kernel, self.morph_kernel), np.uint8)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel,
+                                        iterations=self.morph_iterations)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel,
+                                        iterations=self.morph_iterations)
+
+            if not np.any(mask):
+                return img_arr
+
+            result = img_arr.copy()
+            if self.fill_with == 'blur':
+                filler = cv2.GaussianBlur(img_arr, (11, 11), 0)
+                result[mask > 0] = filler[mask > 0]
+                return result
+
+            background = img_arr[mask == 0]
+            if background.size == 0:
+                fill_color = np.rint(img_arr.mean(axis=(0, 1))).astype(np.uint8)
+            else:
+                fill_color = np.rint(background.mean(axis=0)).astype(np.uint8)
+            result[mask > 0] = fill_color
+            return result
+        except Exception:
+            logger.exception('Unable to mask glare/reflection in image')
+            return None
+
+    def shutdown(self):
+        pass
+
 
 class ImageScale:
 

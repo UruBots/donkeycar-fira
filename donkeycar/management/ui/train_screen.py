@@ -194,7 +194,34 @@ class TrainScreen(AppScreen):
     tub_df = ObjectProperty(force_dispatch=True)
     train_checker = False
 
+    def _sync_training_flags_from_config(self):
+        if not self.config or not self.ids:
+            return
+
+        self.ids.glare_mask_toggle.state = 'down' if getattr(self.config, 'GLARE_MASK', False) else 'normal'
+        self.ids.style_transfer_toggle.state = 'down' if getattr(self.config, 'AUG_STYLE_TRANSFER', False) else 'normal'
+
+    def _apply_training_flags_to_config(self):
+        if not self.config or not self.ids:
+            return
+
+        self.config.GLARE_MASK = self.ids.glare_mask_toggle.state == 'down'
+        self.config.AUG_STYLE_TRANSFER = self.ids.style_transfer_toggle.state == 'down'
+
+        transformations = [name for name in getattr(self.config, 'TRANSFORMATIONS', [])
+                           if name != 'GLARE_MASK']
+        if self.config.GLARE_MASK:
+            transformations.insert(0, 'GLARE_MASK')
+        self.config.TRANSFORMATIONS = transformations
+
+        augmentations = [name for name in getattr(self.config, 'AUGMENTATIONS', [])
+                         if name != 'STYLE_TRANSFER']
+        if self.config.AUG_STYLE_TRANSFER:
+            augmentations.append('STYLE_TRANSFER')
+        self.config.AUGMENTATIONS = augmentations
+
     def train_call(self, *args):
+        self._apply_training_flags_to_config()
         tub_path = get_app_screen('tub').ids.tub_loader.tub.base_path
         transfer = self.ids.transfer_spinner.text
         model_type = self.ids.train_spinner.text
@@ -215,7 +242,11 @@ class TrainScreen(AppScreen):
             history = train(self.config, tub_paths=tub_path,
                             model_type=model_type,
                             transfer=transfer_model,
-                            comment=self.ids.comment.text)
+                            comment=self.ids.comment.text,
+                            mask_glare=self.config.GLARE_MASK,
+                            style_transfer=self.config.AUG_STYLE_TRANSFER,
+                            style_transfer_preset=getattr(self.config, 'AUG_STYLE_TRANSFER_PRESET', 'random'),
+                            style_transfer_blend=getattr(self.config, 'AUG_STYLE_TRANSFER_BLEND', 0.35))
         except Exception as e:
             Logger.error(e)
             status(f'Training failed see console')
@@ -246,6 +277,7 @@ class TrainScreen(AppScreen):
 
     def on_config(self, obj, config):
         if self.config and self.ids:
+            self._sync_training_flags_from_config()
             self.reload_database()
 
     def reload_database(self):

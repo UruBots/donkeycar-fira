@@ -3,9 +3,13 @@ import time
 import math
 import numpy as np
 import cv2
-from ultralytics import YOLO
-from ultralytics.utils import LOGGER
 import logging
+try:
+    from ultralytics import YOLO
+    from ultralytics.utils import LOGGER
+except ImportError:
+    YOLO = None
+    LOGGER = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 LOGGER.setLevel("ERROR")
 # Parámetros de calibración para estimar la distancia
@@ -18,6 +22,8 @@ cv2.setNumThreads(4)
 
 class YoloDetect(object):
     def __init__(self, model_folder, model_name):
+        if YOLO is None:
+            raise RuntimeError('Ultralytics YOLO backend is not available')
         self.model = YOLO(os.path.join(model_folder, model_name), task='detect')
         self.classes = self.model.names
         
@@ -124,9 +130,30 @@ class ProceedManager(object):
         return self.correction_duration <= elapsed_time < (self.correction_duration + self.straight_duration)
 
 class FIRAEngineYolo(object):
-    def __init__(self, model_folder, yolo_model_name, yolo_classes, apriltag_hz, zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2, wait_duration=3.0, turn_initial_wait_duration=1.0, proceed_correction_duration=1.0, proceed_straight_duration=1.0, debug_visuals=True, debug=False):
-        self.yolo_detector = YoloDetect(model_folder, yolo_model_name)
-        self.yolo_classes = self.yolo_detector.classes
+    def __init__(self, model_folder, yolo_model_name, yolo_classes, apriltag_hz,
+                 zebra_hz, top_crop_ratio, stop_duration=5, turn_duration=2,
+                 wait_duration=3.0, turn_initial_wait_duration=1.0,
+                 proceed_correction_duration=1.0,
+                 proceed_straight_duration=1.0,
+                 yolo_disable_after_errors=5,
+                 debug_visuals=True, debug=False):
+        self.yolo_detector = None
+        self.yolo_classes = yolo_classes
+        self.detector_ready = False
+        self.detector_backend = 'unavailable'
+        self.consecutive_detection_errors = 0
+        self.max_consecutive_detection_errors = max(1, yolo_disable_after_errors)
+        self.last_detection_error = None
+
+        try:
+            self.yolo_detector = YoloDetect(model_folder, yolo_model_name)
+            self.yolo_classes = self.yolo_detector.classes
+            self.detector_ready = True
+            self.detector_backend = 'ultralytics'
+        except Exception as e:
+            self.last_detection_error = str(e)
+            logger.error('YOLO detector init failed, disabling YOLO engine: %s', e)
+
         self.zebra_crosswalk_detector = ZebraCrosswalkDetector(zebra_hz)
         self.turn_manager = TurnManager(turn_duration,turn_initial_wait_duration)
         self.proceed_manager = ProceedManager(proceed_correction_duration, proceed_straight_duration)
@@ -145,6 +172,17 @@ class FIRAEngineYolo(object):
 
         if self.debug:
             logger.info("FIRA engine running...")
+
+    def get_health(self):
+        return {
+            'engine': 'yolo',
+            'detector_ready': self.detector_ready,
+            'detector_backend': self.detector_backend,
+            'consecutive_detection_errors': self.consecutive_detection_errors,
+            'max_consecutive_detection_errors': self.max_consecutive_detection_errors,
+            'last_detection_error': self.last_detection_error,
+            'state': self.state,
+        }
 
     def crop_image(self, img, crop_ratio=None):
         if crop_ratio is None:
@@ -242,7 +280,21 @@ class FIRAEngineYolo(object):
         if len(img.shape) != 3 or img.shape[-1] != 3:
             raise ValueError(f"❌ Error: img has incorrect shape {img.shape}")
 
-        results = self.yolo_detector.run(img)
+        try:
+            results = self.yolo_detector.run(img)
+            self.consecutive_detection_errors = 0
+            self.last_detection_error = None
+        except Exception as e:
+            self.consecutive_detection_errors += 1
+            self.last_detection_error = str(e)
+            logger.error('YOLO inference error (%d/%d): %s',
+                         self.consecutive_detection_errors,
+                         self.max_consecutive_detection_errors,
+                         e)
+            if self.consecutive_detection_errors >= self.max_consecutive_detection_errors:
+                self.detector_ready = False
+                logger.error('YOLO detector disabled after repeated inference errors')
+            return angle, throttle, img_arr
         # if self.debug:
         #     logger.info(f"YOLO results: {results}")
 
@@ -312,6 +364,9 @@ class FIRAEngineYolo(object):
         current_time = time.time()        
         # cropped_input_img = self.crop_image(input_img_arr, 0.65)
         ui_image_output = input_img_arr.copy()
+
+        if not self.detector_ready:
+            return angle, throttle, ui_image_output
 
         if self.state == 'stop':
             if current_time - self.stop_start_time >= self.stop_duration:

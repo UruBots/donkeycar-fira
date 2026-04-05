@@ -1,7 +1,7 @@
 import math
 import os
 from time import time
-from typing import List, Dict, Union, Tuple
+from typing import List, Dict, Union, Tuple, Optional
 import logging
 
 from tensorflow.python.keras.models import load_model
@@ -100,12 +100,55 @@ def get_model_train_details(database: PilotDatabase, model: str = None) \
     return model_name, model_num
 
 
+def apply_training_augmentation_overrides(
+    cfg: Config,
+    mask_glare: Optional[bool] = None,
+    style_transfer: Optional[bool] = None,
+    style_transfer_preset: Optional[str] = None,
+    style_transfer_blend: Optional[float] = None,
+) -> Config:
+    if mask_glare is not None:
+        cfg.GLARE_MASK = bool(mask_glare)
+        transformations = [name for name in getattr(cfg, 'TRANSFORMATIONS', [])
+                           if name != 'GLARE_MASK']
+        if cfg.GLARE_MASK:
+            transformations.insert(0, 'GLARE_MASK')
+        cfg.TRANSFORMATIONS = transformations
+
+    if style_transfer is not None:
+        cfg.AUG_STYLE_TRANSFER = bool(style_transfer)
+
+    if style_transfer_preset is not None:
+        cfg.AUG_STYLE_TRANSFER_PRESET = style_transfer_preset
+
+    if style_transfer_blend is not None:
+        cfg.AUG_STYLE_TRANSFER_BLEND = float(style_transfer_blend)
+
+    augmentations = [name for name in getattr(cfg, 'AUGMENTATIONS', [])
+                     if name != 'STYLE_TRANSFER']
+    if getattr(cfg, 'AUG_STYLE_TRANSFER', False):
+        augmentations.append('STYLE_TRANSFER')
+    cfg.AUGMENTATIONS = augmentations
+    return cfg
+
+
 def train(cfg: Config, tub_paths: str, model: str = None,
-          model_type: str = None, transfer: str = None, comment: str = None) \
+          model_type: str = None, transfer: str = None, comment: str = None,
+          mask_glare: Optional[bool] = None,
+          style_transfer: Optional[bool] = None,
+          style_transfer_preset: Optional[str] = None,
+          style_transfer_blend: Optional[float] = None) \
         -> tf.keras.callbacks.History:
     """
     Train the model
     """
+    cfg = apply_training_augmentation_overrides(
+        cfg,
+        mask_glare=mask_glare,
+        style_transfer=style_transfer,
+        style_transfer_preset=style_transfer_preset,
+        style_transfer_blend=style_transfer_blend,
+    )
     database = PilotDatabase(cfg)
     if model_type is None:
         model_type = cfg.DEFAULT_MODEL_TYPE
@@ -198,5 +241,14 @@ def train(cfg: Config, tub_paths: str, model: str = None,
     }
     database.add_entry(database_entry)
     database.write()
+
+    model_metadata = {
+        'use_glare_mask': bool(getattr(cfg, 'GLARE_MASK', False)),
+        'use_style_transfer': bool(getattr(cfg, 'AUG_STYLE_TRANSFER', False)),
+        'style_transfer_preset': getattr(cfg, 'AUG_STYLE_TRANSFER_PRESET', 'random'),
+        'style_transfer_blend': getattr(cfg, 'AUG_STYLE_TRANSFER_BLEND', 0.35),
+    }
+    from donkeycar.utils import write_model_metadata
+    write_model_metadata(model_path, model_metadata)
 
     return history

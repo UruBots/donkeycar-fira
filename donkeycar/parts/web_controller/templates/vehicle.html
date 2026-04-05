@@ -29,6 +29,11 @@
 
         <!-- video -->
         <div class="thumbnail">
+          <div style="margin-bottom: 8px;">
+            <span>Video:</span>
+            <span id="video_transport_badge" class="label label-default">Negotiating...</span>
+          </div>
+          <video id="webrtc-video" class="img-responsive" autoplay playsinline muted style="display:none; width: 100%;"></video>
           <img id='mpeg-image', class='img-responsive' src="/video"/> </img>
         </div>
 
@@ -103,6 +108,100 @@
                 <option value="{{ t / 100.0 }}">{{ t }}%</option>
               {% end %}
             </select>
+          </div>
+        </div>
+
+        <div class="panel panel-default" style="margin-top: 15px;">
+          <div class="panel-heading">
+            <strong>FIRA Telemetry</strong>
+          </div>
+          <div class="panel-body" style="padding-top: 10px; padding-bottom: 10px;">
+            <div class="row" style="margin-bottom: 8px;">
+              <div class="col-xs-6">
+                <span>State:</span>
+                <span id="fira_drive_state" class="label label-primary">IDLE</span>
+              </div>
+              <div class="col-xs-6">
+                <span>Failsafe:</span>
+                <span id="fira_failsafe_badge" class="label label-success">OFF</span>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Obstacle Severity</span>
+                <span id="fira_obstacle_label">0.00</span>
+              </div>
+              <div class="progress" style="margin-bottom: 0;">
+                <div id="fira_obstacle_bar" class="progress-bar progress-bar-danger" role="progressbar" style="width: 0%;">0%</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Lane Confidence</span>
+                <span id="fira_lane_label">0.00</span>
+              </div>
+              <div class="progress" style="margin-bottom: 0;">
+                <div id="fira_lane_bar" class="progress-bar progress-bar-info" role="progressbar" style="width: 0%;">0%</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Lane Weight</span>
+              </div>
+              <div class="progress" style="margin-bottom: 0;">
+                <div id="fira_lane_weight_bar" class="progress-bar progress-bar-success" role="progressbar" style="width: 0%;">0%</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Obstacle Weight</span>
+              </div>
+              <div class="progress" style="margin-bottom: 0;">
+                <div id="fira_obstacle_weight_bar" class="progress-bar progress-bar-warning" role="progressbar" style="width: 0%;">0%</div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-xs-4">Curve: <strong id="fira_curve_label">1.00</strong></div>
+              <div class="col-xs-4">Speed: <strong id="fira_speed_factor_label">1.00</strong></div>
+              <div class="col-xs-4">Cap: <strong id="fira_drive_cap_label">1.00</strong></div>
+            </div>
+
+            <hr style="margin-top: 10px; margin-bottom: 10px;" />
+
+            <div style="margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Right-Lane Score</span>
+                <span id="fira_right_lane_label">0.00</span>
+              </div>
+              <div class="progress" style="margin-bottom: 0;">
+                <div id="fira_right_lane_bar" class="progress-bar progress-bar-primary" role="progressbar" style="width: 0%;">0%</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Checkpoint Progress</span>
+                <span id="fira_checkpoint_count_label">0</span>
+              </div>
+              <div class="progress" style="margin-bottom: 0;">
+                <div id="fira_checkpoint_progress_bar" class="progress-bar progress-bar-info" role="progressbar" style="width: 0%;">0%</div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-xs-6">Lane Violations: <strong id="fira_lane_violations_label">0</strong></div>
+              <div class="col-xs-6">Active Frames: <strong id="fira_active_frames_label">0</strong></div>
+            </div>
+
+            <div class="row" style="margin-top: 8px;">
+              <div class="col-xs-6">Compliance: <strong id="fira_compliance_score_label">0.00</strong></div>
+              <div class="col-xs-6">Status: <span id="fira_compliance_badge" class="label label-warning">NOT READY</span></div>
+            </div>
           </div>
         </div>
       </div> <!-- end joystick-column -->
