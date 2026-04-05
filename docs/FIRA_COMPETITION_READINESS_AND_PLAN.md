@@ -117,6 +117,27 @@ Readiness battery:
 python scripts/fira_competition_battery.py
 ```
 
+Battery with explicit summary output:
+```bash
+python scripts/fira_competition_battery.py \
+  --summary-target-ready-ratio 0.65 \
+  --summary-min-active-frames 90 \
+  --summary-output-json data/fira_competition_summary.json \
+  --summary-output-md data/fira_competition_summary.md
+```
+
+Session report summary and threshold calibration:
+```bash
+python scripts/fira_competition_report_summary.py \
+  --reports-glob "data/**/fira_competition_report_*.json" \
+  --target-ready-ratio 0.65 \
+  --output-json data/fira_competition_summary.json \
+  --output-md data/fira_competition_summary.md
+```
+
+Apply the recommended value to:
+- `FIRA_COMPETITION_COMPLIANCE_SCORE_THRESHOLD`
+
 ---
 
 ## 4) Execution Plan (Phased)
